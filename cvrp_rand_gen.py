@@ -1,4 +1,4 @@
-# cvrp_generator.py
+# cvrp_rand_gen.py
 import math
 import random
 import numpy as np

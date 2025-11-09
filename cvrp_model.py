@@ -4,7 +4,7 @@ from pyomo.environ import (
     ConcreteModel, Set, Param, Var, Binary, NonNegativeReals,
     Objective, Constraint, SolverFactory, value
 )
-from cvrp_generator import generate_random_cvrp
+from cvrp_rand_gen import generate_random_cvrp
 
 
 def build_cvrp_pyomo(instance):
