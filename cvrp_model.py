@@ -1,93 +1,89 @@
-# cvrp_model.py
-import math
-from pyomo.environ import (
-    ConcreteModel, Set, Param, Var, Binary, NonNegativeReals,
-    Objective, Constraint, SolverFactory, value
-)
-from cvrp_rand_gen import generate_random_cvrp
+import json
+from pyomo.environ import *
 
+def build_cvrp_model(instance_file="cvrp_instance.json"):
+    # Load data
+    with open(instance_file, "r") as f:
+        data = json.load(f)
 
-def build_cvrp_pyomo(instance):
-    n = instance["n_customers"]
-    nodes = list(range(0, n + 1))
-    demands = instance["demands"]
-    Q = instance["Q"]
-    K = instance["K"]
-    cost = instance["cost"]
+    N = data["N"]
+    V = range(N)
+    A = [(i, j) for i in V for j in V if i != j]
 
-    model = ConcreteModel(name="CVRP_flow")
-    model.N = Set(initialize=nodes)
-    model.A = Set(initialize=[(i, j) for i in nodes for j in nodes if i != j], dimen=2)
+    K = data["K"]
+    Q = data["Q"]
+    c = data["costs"]
+    q = data["demands"]
 
-    model.cost = Param(model.A, initialize=lambda m, i, j: float(cost[(i, j)]))
-    model.demand = Param(model.N, initialize=lambda m, i: float(demands[i]))
-    model.Q = Param(initialize=float(Q))
-    model.K = Param(initialize=int(K))
+    model = ConcreteModel()
 
-    model.x = Var(model.A, domain=Binary)
-    model.f = Var(model.A, domain=NonNegativeReals, bounds=(0, float(Q)))
+    # Sets
+    model.V = Set(initialize=V)
+    model.A = Set(within=model.V * model.V, initialize=A)
+
+    # Parameters
+    model.c = Param(model.A, initialize={(i, j): c[i][j] for i, j in A})
+    model.q = Param(model.V, initialize={i: q[i] for i in V})
+    model.Q = Param(initialize=Q)
+    model.K = Param(initialize=K)
+
+    # Variables
+    model.x = Var(model.A, within=Binary)
+    model.f = Var(model.A, within=NonNegativeReals)
 
     # Objective
-    def obj_rule(m):
-        return sum(m.cost[i, j] * m.x[i, j] for (i, j) in m.A)
-    model.obj = Objective(rule=obj_rule, sense=1)
+    def obj_rule(model):
+        return sum(model.c[i, j] * model.x[i, j] for (i, j) in model.A)
+    model.obj = Objective(rule=obj_rule, sense=minimize)
 
-    # Degree constraints
-    def out_deg_rule(m, i):
-        if i == 0:
-            return sum(m.x[i, j] for j in m.N if j != i) <= m.K
-        return sum(m.x[i, j] for j in m.N if j != i) == 1
-    model.out_deg = Constraint(model.N, rule=out_deg_rule)
+    # Constraints
 
-    def in_deg_rule(m, i):
+    # Each customer visited once (in/out)
+    def visit_out_rule(model, i):
         if i == 0:
-            return sum(m.x[j, i] for j in m.N if j != i) <= m.K
-        return sum(m.x[j, i] for j in m.N if j != i) == 1
-    model.in_deg = Constraint(model.N, rule=in_deg_rule)
+            return Constraint.Skip
+        return sum(model.x[i, j] for j in model.V if j != i) == 1
+    model.visit_out = Constraint(model.V, rule=visit_out_rule)
+
+    def visit_in_rule(model, i):
+        if i == 0:
+            return Constraint.Skip
+        return sum(model.x[j, i] for j in model.V if j != i) == 1
+    model.visit_in = Constraint(model.V, rule=visit_in_rule)
+
+    # Exactly K vehicles depart from depot
+    def depot_out_rule(model):
+        return sum(model.x[0, j] for j in model.V if j != 0) == model.K
+    model.depot_out = Constraint(rule=depot_out_rule)
 
     # Flow conservation
-    total_demand = sum(demands.values())
+    def flow_conservation_rule(model, i):
+        return sum(model.x[i, j] for j in model.V if j != i) == sum(model.x[j, i] for j in model.V if j != i)
+    model.flow_conservation = Constraint(model.V, rule=flow_conservation_rule)
 
-    def flow_cons_rule(m, i):
+    # Flow balance (commodity flow)
+    def flow_balance_rule(model, i):
         if i == 0:
-            return (
-                sum(m.f[j, 0] for j in m.N if j != 0)
-                - sum(m.f[0, j] for j in m.N if j != 0)
-                == -total_demand
-            )
-        return (
-            sum(m.f[j, i] for j in m.N if j != i)
-            - sum(m.f[i, j] for j in m.N if j != i)
-            == m.demand[i]
+            return Constraint.Skip
+        lhs = sum(model.f[i, j] for j in model.V if j != i) - sum(model.f[j, i] for j in model.V if j != i)
+        rhs = 0.5 * model.q[i] * (
+            sum(model.x[j, i] for j in model.V if j != i) + sum(model.x[i, j] for j in model.V if j != i)
         )
-    model.flow_cons = Constraint(model.N, rule=flow_cons_rule)
+        return lhs == rhs
+    model.flow_balance = Constraint(model.V, rule=flow_balance_rule)
 
-    # Linking flow and binary
-    def flow_link_rule(m, i, j):
-        return m.f[i, j] <= m.Q * m.x[i, j]
-    model.flow_link = Constraint(model.A, rule=flow_link_rule)
+    # Capacity constraints
+    def capacity_rule(model, i, j):
+        return inequality(model.q[i] * model.x[i, j], model.f[i, j], (model.Q - model.q[j]) * model.x[i, j])
+    model.capacity = Constraint(model.A, rule=capacity_rule)
 
     return model
 
 
-def solve_cvrp(instance, solver_name="gurobi", timelimit=60, mipgap=1e-4):
-    model = build_cvrp_pyomo(instance)
-    solver = SolverFactory(solver_name)
-    if solver_name == "gurobi":
-        solver.options["TimeLimit"] = timelimit
-        solver.options["MIPGap"] = mipgap
-
-    print("Solving CVRP instance...")
-    results = solver.solve(model, tee=False)
-    print(results.solver.status, results.solver.termination_condition)
-
-    arcs = [(i, j) for (i, j) in model.A if value(model.x[i, j]) > 0.5]
-    total_cost = value(model.obj)
-    print(f"Total cost: {total_cost:.3f}")
-    print("Arcs used:", arcs)
-    return model, arcs
-
-
 if __name__ == "__main__":
-    inst = generate_random_cvrp(n_customers=12, seed=42)
-    model, arcs = solve_cvrp(inst, solver_name="gurobi")
+    model = build_cvrp_model()
+
+    solver = SolverFactory("gurobi")
+    solver.solve(model, tee=True)
+
+    print(f"Optimal objective value: {value(model.obj)}")
