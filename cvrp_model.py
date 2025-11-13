@@ -5,12 +5,8 @@ from pyomo.environ import Set, Param, Var, Objective, Constraint, Binary, NonNeg
 def build_cvrp_model(instances_file="cvrp_instance.json"):
 
     # 1. load data
-    try:
-        with open(instances_file, "r") as f:
-            data = json.load(f)
-    except FileNotFoundError:
-        print(f"Error: Instance file '{instances_file}' not found.")
-        return None
+    with open(instances_file, "r") as f:
+        data = json.load(f)
 
     # process data
     N = data["N"]
@@ -82,6 +78,7 @@ def build_cvrp_model(instances_file="cvrp_instance.json"):
 
     # 7.5. flow blance (Commodity Flow)
     # constraint (6) in the paper for i in V\{0} without depot
+
     # flow balance -> q[i] is vertex demand:
     # sum(f_ij) - sum(f_ji) = 0.5 * q[i] * (sum(x_ji) + sum(x_ij))
     def flow_balance_rule(model, i):
