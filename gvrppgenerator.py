@@ -62,6 +62,37 @@ def create_clusters(points, depot_index, num_clusters):
     # Μοίρασε τους πελάτες στους m clusters
     for idx, customer in enumerate(customer_indices):
         cluster_id = (idx % num_clusters) + 1  # κυκλικά στους m clusters
-        clusters[cluster_id].append(customer)
+        clusters[cluster_id].append(customer) # στο cluster1 βαζει τον customer 0...
 
-    return clusters    
+    return clusters 
+
+def conectivity(points, clusters):
+    A = [] 
+    cluster_ids = list(clusters.keys())
+
+    for cid_a in cluster_ids:
+        customers_a = clusters[cid_a]
+
+        for cid_b in cluster_ids:
+            if cid_a == cid_b:
+                continue  # αγνοούμε αποστάσεις μέσα στο ίδιο cluster
+
+            customers_b = clusters[cid_b]
+
+            # Για κάθε σημείο i στο cluster A
+            for i in customers_a:
+                # Για κάθε σημείο j στο cluster B
+                for j in customers_b:
+                    xi, yi = points[i].x, points[i].y
+                    xj, yj = points[j].x, points[j].y
+
+                    # Manhattan distance
+                    dist = abs(xi - xj) + abs(yi - yj)
+
+                    # Προσθήκη στο πίνακα των arcs
+                    A.append((i, j, dist))
+
+    return A
+
+
+
