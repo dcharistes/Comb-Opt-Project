@@ -9,7 +9,7 @@ def build_cvrp_model(instances_file="cvrp_instance.json"):
         data = json.load(f)
 
     # process data
-    N = data["N"]
+    N = data["V"]
     V_set = range(N)
     A_set = [(i, j) for i in V_set for j in V_set if i != j]
 
