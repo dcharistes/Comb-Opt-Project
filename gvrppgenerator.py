@@ -8,6 +8,7 @@ CU=0
 CL=0
 D=0
 K=0 #num of vehicles
+Q=15 #capacity of vehicle
 grid_size=0
 CUSTOMER_POINT=1
 DEPOT_POINT=2
@@ -45,6 +46,7 @@ def add_customers(grid, points):
 
 
 def create_clusters(points, depot_index, num_clusters):
+    print("--Creating Clusters (step 3)")
 
     clusters = dict()
     clusters[0] = [depot_index]  # C0 περιέχει μόνο το depot
@@ -67,6 +69,8 @@ def create_clusters(points, depot_index, num_clusters):
     return clusters 
 
 def conectivity(points, clusters):
+    print("--Creating all the arcs that connect all Clusters with each other (step 4)")
+
     A = [] 
     cluster_ids = list(clusters.keys())
 
@@ -93,6 +97,20 @@ def conectivity(points, clusters):
                     A.append((i, j, dist))
 
     return A
+
+def add_Demand(clusters):
+    print("--Adding a total demand to each Cluster (step 5)")
+
+    D = []
+    cluster_ids = [cid for cid in clusters.keys() if cid != 0]
+
+    for cid in cluster_ids:
+
+        d = random.randint(1,Q)
+        D.append((cid, d))
+
+    return D
+
 
 
 
