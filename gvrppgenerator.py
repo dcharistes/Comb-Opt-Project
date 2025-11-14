@@ -5,9 +5,9 @@ import os
 
 V=0
 CU=0
-CL=0
 D=0
 K=0 #num of vehicles
+num_clusters=0
 Q=15 #capacity of vehicle
 grid_size=0
 CUSTOMER_POINT=1
@@ -112,5 +112,53 @@ def add_Demand(clusters):
     return D
 
 
+def save_on_disk(grid, clusters, A, D, points, filename="0"):
+
+    folder_name = str(V) + "_" + str(CU) + "_" + str(num_clusters)
+    file_extension = ".txt"
+    if not os.path.exists(folder_name):
+        os.makedirs(folder_name)
+
+    try:
+        file_handler = open(folder_name+"/"+filename+file_extension, "w")
+
+        print("--Writing problems on disk... (step 6)")
+
+        text = list()
+        text.append(f"{grid_size*grid_size} {CU} {num_clusters} {K} {Q}\n")
+
+        cluster_ids = [cid for cid in clusters.keys()]
+        demand_dict = {cid: d for cid, d in D}
+        
+        text.append(f"{num_clusters} Clusters:\n")
+        
+        for cid, customers in clusters.items():
+            
+            for cust in customers:
+                x = points[cust].x
+                y = points[cust].y
+
+                if cid == 0:
+                    demand_value = 0   # depot has no demand
+                else:
+                    demand_value = demand_dict[cid]
+
+                text.append(f"{cid} {x} {y} {demand_value}\n")
+
+        text.append(f"{len(A)} Arcs:\n")
+        for i,j,dist in A:
+            text.append(f"{points[i].x} {points[i].y} {points[j].x} {points[j].y} {dist}\n")
 
 
+        # Remove last \n character
+        text[-1] = text[-1][:-1]
+        file_handler.write(''.join(text))
+        file_handler.close()
+        print(f"\nSuccesfully created file {filename+file_extension}.\n\n")
+    except Exception as e:
+        print(str(e))
+        print(f"\nError while creating file {filename+file_extension}!\n\n")
+        
+
+
+        
