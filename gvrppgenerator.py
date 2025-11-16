@@ -30,9 +30,8 @@ def add_depot(grid, points):
 
     grid[points[0].x][points[0].y] = DEPOT_POINT
 
-    depot_index = points[0].x * grid_size + points[0].y
 
-    return depot_index
+    return 0
 
 
 # Function to add Customers to grid 
@@ -204,10 +203,10 @@ if __name__ == "__main__":
         # Define points list
         points = [Point() for i in range(V)]
 
-        
-        add_customers(grid, points)
         depot_index = add_depot(grid, points)
 
+        add_customers(grid, points)
+        
         clusters = create_clusters(points, depot_index, num_clusters)
 
         A = conectivity(points, clusters)
