@@ -37,16 +37,16 @@ def read_data_cvrp(filename="cvrp_instance.txt"):
     print(f"Successful data read: N={N}, K={K}, Q={Q}")
     return N, K, Q, demands, costs
 
-def build_cvrp_model(N, K, Q, demands, costs):
+def build_cvrp_model(N, K, Q, demands, costs, vertex_to_cluster, cluster_demands):
 
     # 1. process data
     V_set = range(N)
-    A_set = [(i, j) for i in V_set for j in V_set if i != j]
+    A_set = [(i, j) for i in V_set for j in V_set if i != j] # set of arcs
 
-    K_param = K
-    Q_param = Q
-    c_param = {(i, j): costs[i][j] for i, j in A_set}
-    q_param = {i: demands[i] for i in V_set}
+    K_param = K #vehicle number
+    Q_param = Q #capacity
+    c_param = {(i, j): costs[i][j] for i, j in A_set} #costs
+    q_param = {i: demands[i] for i in V_set} # demand of each cluster. maybe not in V_set. V_set is for all the nodes. we need the clusters here!
 
     # 2. model init
     model = pyo.ConcreteModel()
@@ -64,6 +64,10 @@ def build_cvrp_model(N, K, Q, demands, costs):
     model.c = Param(model.A, initialize=c_param)
     # q[i]: demand of vertex i (q[0] = 0)
     model.q = Param(model.V, initialize=q_param)
+    # a(i): the cluster index of vertex i
+    model.a = Param(model.V, initialize=vertex_to_cluster)
+    # q[a(i)]: demand of cluster a(i) that the i node is in it.
+    model.q_cluster = Param(initialize=cluster_demands)
     # Q: vehicle capacity
     model.Q = Param(initialize=Q_param)
     # K: number of available vehicles
@@ -109,8 +113,7 @@ def build_cvrp_model(N, K, Q, demands, costs):
     # 7.5. flow blance (Commodity Flow)
     # constraint (6) in the paper for i in V\{0} without depot
 
-    # flow balance -> q[i] is vertex demand:
-    # sum(f_ij) - sum(f_ji) = 0.5 * q[i] * (sum(x_ji) + sum(x_ij))
+    # flow balance -> q[a(i)] is the cluster demand of node i:
     def flow_balance_rule(model, i):
         if i == 0:
             return Constraint.Skip  # depot has no demand
@@ -124,32 +127,31 @@ def build_cvrp_model(N, K, Q, demands, costs):
 
         # constraint: flow and assignment link. ensures the commodity (demand) is dropped
         lhs = sum_f_out - sum_f_in
-        rhs = 0.5 * model.q[i] * (sum_x_in + sum_x_out)
+        cluster_i = model.a[i]
+        rhs = 0.5 * model.q_cluster[cluster_i] * (sum_x_in + sum_x_out)
         return lhs == rhs
     model.flow_balance = pyo.Constraint(model.V_cust, rule=flow_balance_rule, doc='commodity flow balance at customer nodes')
 
     # 7.6. capacity constraints
     # strengthened bound 9 from the paper:
 
-    # capacity lower bound (flow at least the demand of the starting node, if the arc is used)
-    # f_ij >= q_i * x_ij  =>  f_ij - q_i * x_ij >= 0
-
+    # capacity lower bound -> flow of arc i,j >= the cluster demand of the node i. if the arc ij, is used
     def capacity_lower_rule(model, i, j):
         if i == j:
             return pyo.Constraint().Skip()
 
-        return model.f[i,j] >= model.q[i] * model.x[i,j]
+        cluster_i = model.a[i]
+        return model.f[i,j] >= model.q_cluster[cluster_i] * model.x[i,j]
 
     model.capacity_lower = pyo.Constraint(model.A, rule=capacity_lower_rule, doc='flow must carry at least the starting node demand')
 
-    # capacity upper bound -> flow not exceed vehicle capacity minus the arrival node's demand
-    # f_ij <= (Q - q_j) * x_ij  =>  f_ij - (Q - q_j) * x_ij <= 0
-
+    # capacity upper bound -> (flow_ij) <=  (vehicle capacity) - (the cluster demand of node j)
     def capacity_upper_rule(model, i, j):
         if i == j:
             return pyo.Constraint.Skip
 
-        return model.f[i,j] <= (model.Q - model.q[j]) * model.x[i,j]
+        cluster_j = model.a[j]
+        return model.f[i,j] <= (model.Q - model.q_cluster[cluster_j]) * model.x[i,j]
 
     model.capacity_upper = pyo.Constraint(model.A, rule=capacity_upper_rule, doc='flow must respect remaining vehicle capacity')
 
