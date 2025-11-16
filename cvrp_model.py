@@ -1,22 +1,52 @@
-import json
+import sys
 import pyomo.environ as pyo
 from pyomo.environ import Set, Param, Var, Objective, Constraint, Binary, NonNegativeReals, minimize, inequality
 
-def build_cvrp_model(instances_file="cvrp_instance.json"):
+def read_data_cvrp(filename="cvrp_instance.txt"):
 
-    # 1. load data
-    with open(instances_file, "r") as f:
-        data = json.load(f)
+    with open(filename, "r") as f:
+        lines = f.readlines()
 
-    # process data
-    N = data["V"]
+    lines = [line.strip() for line in lines if line.strip()]
+
+    # --- N, K, Q ---
+    header = lines[0].split()
+    N = int(header[0])      # nodes (with depot)
+    K = int(header[1])      # vehicles
+    Q = float(header[2])    # vechicle capacity
+
+    # read demands
+    demands_line = lines[1].split()
+    demands = [float(d) for d in demands_line]
+    if len(demands) != N:
+        raise ValueError(f"Mismatch: N={N} but {len(demands)} demands found on line 2.")
+
+    #  read cost matrix
+    costs = []
+    cost_lines = lines[2:2+N] # get next N lines
+    if len(cost_lines) != N:
+        raise ValueError(f"Mismatch: N={N} but {len(cost_lines)} cost matrix rows found.")
+
+    for line in cost_lines:
+        cost_row = [float(c) for c in line.split()]
+        if len(cost_row) != N:
+            raise ValueError(f"Cost matrix row has {len(cost_row)} items, but expected {N}.")
+        costs.append(cost_row)
+
+
+    print(f"Successful data read: N={N}, K={K}, Q={Q}")
+    return N, K, Q, demands, costs
+
+def build_cvrp_model(N, K, Q, demands, costs):
+
+    # 1. process data
     V_set = range(N)
     A_set = [(i, j) for i in V_set for j in V_set if i != j]
 
-    K_param = data["K"]
-    Q_param = data["Q"]
-    c_param = {(i, j): data["costs"][i][j] for i, j in A_set}
-    q_param = {i: data["demands"][i] for i in V_set}
+    K_param = K
+    Q_param = Q
+    c_param = {(i, j): costs[i][j] for i, j in A_set}
+    q_param = {i: demands[i] for i in V_set}
 
     # 2. model init
     model = pyo.ConcreteModel()
