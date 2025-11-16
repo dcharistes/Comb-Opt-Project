@@ -30,27 +30,26 @@ def read_data_gvrp(filename="gvrp_instance.txt"):
 
     # --- Line 1: Parse header ---
     header = lines[0].split()
-    N = int(header[0])              # Total nodes (grid_size * grid_size)
-    V = int(header[1])              # Actual customers (not used directly)
-    M = int(header[2])              # Number of clusters
-    K = int(header[3])              # Number of vehicles
-    Q = float(header[4])            # Vehicle capacity
+    N = int(header[0])              # nodes (grid_size * grid_size)
+    V = int(header[1])              # customers
+    M = int(header[2])              # clusters
+    K = int(header[3])              # vehicles
+    Q = float(header[4])            # vehicle capacity
 
-    # Initialize data structures
-    # Node i maps to coordinate (x, y), where node_index = x * sqrt(N) + y
+    # node i maps to coordinate (x, y), where node_index = x * sqrt(N) + y
     node_coords = {}                # {node_id: (x, y)}
-    a = [0] * N                     # a[i] = cluster of node i
-    q_cluster = [0] * (M + 1)       # q_cluster[k] = demand of cluster k (0-indexed)
+    a = [0] * N                     # cluster of node i
+    q_cluster = [0] * (M + 1)       # demand of cluster k (0-indexed)
     cluster_nodes = {}              # {cluster_id: [list of nodes]}
 
-    # --- Parse cluster information ---
+    # parse cluster information
     line_idx = 1
 
-    # Skip "M Clusters:" line
+    # skip "M Clusters:" line
     if "Clusters:" in lines[line_idx]:
         line_idx += 1
 
-    # Read all cluster information
+    # read all cluster information
     while line_idx < len(lines) and "Arcs:" not in lines[line_idx]:
         parts = lines[line_idx].split()
 
@@ -60,15 +59,9 @@ def read_data_gvrp(filename="gvrp_instance.txt"):
         y = int(parts[2])
         demand = float(parts[3])
 
-        # Reconstruct node ID from grid coordinates
-        # Assuming node_id = x * sqrt(N) + y (or similar mapping)
-        # Generator uses points[i].x and points[i].y, so we need to recover the index
+        # grid coordinates -> node id
+        # node_id = x * sqrt(N) + y (check mapping func!)
         node_id = x * int(N**0.5) + y if int(N**0.5)**2 == N else None
-
-        if node_id is None or node_id >= N:
-            # Fallback: just use a counter for nodes we haven't seen
-            # This shouldn't happen if generator is consistent
-            pass
 
         node_coords[node_id] = (x, y)
         a[node_id] = cluster_id
@@ -78,26 +71,24 @@ def read_data_gvrp(filename="gvrp_instance.txt"):
 
         cluster_nodes[cluster_id].append(node_id)
 
-        # Update cluster demand (use the demand from any node in the cluster)
-        # All nodes in same cluster have same demand value
+        # cluster demand
+        # all nodes in same cluster have same demand value
         q_cluster[cluster_id] = demand
 
         line_idx += 1
 
-    # --- Parse arc information to build cost matrix ---
+    # parse arc information to build cost matrix
     cost_matrix = [[float('inf')] * N for _ in range(N)]
 
-    # Set diagonal to 0
+    # diagonal is set to 0
     for i in range(N):
         cost_matrix[i][i] = 0
 
-    # Skip "num_arcs Arcs:" line
+    # ignore "num_arcs Arcs:" line
     if line_idx < len(lines) and "Arcs:" in lines[line_idx]:
         line_idx += 1
 
-    # Read all arcs and populate cost matrix
-    arc_coords = {}  # Map from (x1, y1, x2, y2) to distance
-
+    # read all arcs and import the cost to the cost_matrix
     while line_idx < len(lines):
         parts = lines[line_idx].split()
 
@@ -114,7 +105,6 @@ def read_data_gvrp(filename="gvrp_instance.txt"):
 
         if node_i < N and node_j < N:
             cost_matrix[node_i][node_j] = distance
-            arc_coords[(x1, y1, x2, y2)] = (node_i, node_j, distance)
 
         line_idx += 1
 
