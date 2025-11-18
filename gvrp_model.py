@@ -3,89 +3,69 @@ import pyomo.environ as pyo
 from pyomo.environ import Set, Param, Var, Objective, Constraint, Binary, NonNegativeReals, minimize, inequality
 
 def read_data_gvrp(filename="gvrp_instance.txt"):
-
     with open(filename, "r") as f:
-        lines = f.readlines()
+        lines = [line.strip() for line in f if line.strip()]
 
-    lines = [line.strip() for line in lines if line.strip()]
-
-    # --- Line 1: Parse header ---
+    # Parse header line
     header = lines[0].split()
-    N = int(header[0])              # nodes (grid_size * grid_size)
-    V = int(header[1])              # customers
-    M = int(header[2])              # clusters
-    K = int(header[3])              # vehicles
-    Q = float(header[4])            # vehicle capacity
+    grid_total_nodes = int(header[0])  # grid_size * grid_size
+    V = int(header[1])                 # number of nodes
+    M = int(header[2])                 # number of clusters
+    K = int(header[3])                 # number of vehicles
+    Q = float(header[4])               # vehicle capacity
 
-    # node i maps to coordinate (x, y), where node_index = x * sqrt(N) + y
-    node_coords = {}                # {node_id: (x, y)}
-    a = [0] * N                     # cluster of node i
-    q_cluster = [0] * (M + 1)       # demand of cluster k (0-indexed)
-    cluster_nodes = {}              # {cluster_id: [list of nodes]}
+    # Parse clusters
+    line_idx = 2  # Skip header line + line with 'M Clusters:'
+    cluster_nodes = {}
+    a = []  # node-to-cluster mapping, sequential indexing will be used
+    q_cluster = [0] * (M + 1)
+    node_coords = []
 
-    # parse cluster information
-    line_idx = 1
+    depot_node_id = None
+    node_id_map = {}  # Map from (x,y) to sequential node ID
 
-    # skip "M Clusters:" line
-    if "Clusters:" in lines[line_idx]:
-        line_idx += 1
-
-    # read all cluster information
-    while line_idx < len(lines) and "Arcs:" not in lines[line_idx]:
+    current_node_id = 0
+    while "Arcs:" not in lines[line_idx]:
         parts = lines[line_idx].split()
-
         cluster_id = int(parts[0])
-
         x = int(parts[1])
         y = int(parts[2])
         demand = float(parts[3])
 
-        # grid coordinates -> node id
-        # node_id = x * sqrt(N) + y (check mapping func!)
-        node_id = x * int(N**0.5) + y if int(N**0.5)**2 == N else None
+        node_coords.append((x, y))
 
-        node_coords[node_id] = (x, y)
-        a[node_id] = cluster_id
+        node_id_map[(x, y)] = current_node_id
+        a.append(cluster_id)
 
         if cluster_id not in cluster_nodes:
             cluster_nodes[cluster_id] = []
+        cluster_nodes[cluster_id].append(current_node_id)
 
-        cluster_nodes[cluster_id].append(node_id)
-
-        # cluster demand
-        # all nodes in same cluster have same demand value
+        # Assign cluster demand (assume all nodes within a cluster have same demand)
         q_cluster[cluster_id] = demand
 
+        if cluster_id == 0:
+            depot_node_id = current_node_id
+
+        current_node_id += 1
         line_idx += 1
 
-    # parse arc information to build cost matrix
-    cost_matrix = [[float('inf')] * N for _ in range(N)]
+    N = current_node_id  # Actual number of nodes (depot + customers)
 
-    # diagonal is set to 0
-    for i in range(N):
-        cost_matrix[i][i] = 0
-
-    # ignore "num_arcs Arcs:" line
-    if line_idx < len(lines) and "Arcs:" in lines[line_idx]:
-        line_idx += 1
-
-    # read all arcs and import the cost to the cost_matrix
+    # Parse arcs
+    line_idx += 1  # Skip 'Arcs:' line
+    arc_list = []
+    cost_param = {}
     while line_idx < len(lines):
         parts = lines[line_idx].split()
+        x1, y1, x2, y2 = map(int, parts[0:4])
+        distance = int(parts[4])
 
-        x1 = int(parts[0])
-        y1 = int(parts[1])
-        x2 = int(parts[2])
-        y2 = int(parts[3])
-        distance = float(parts[4])
+        node_i = node_id_map[(x1, y1)]
+        node_j = node_id_map[(x2, y2)]
 
-        # Recover node IDs from coordinates
-        grid_width = int(N**0.5)
-        node_i = x1 * grid_width + y1
-        node_j = x2 * grid_width + y2
-
-        if node_i < N and node_j < N:
-            cost_matrix[node_i][node_j] = distance
+        arc_list.append((node_i, node_j))
+        cost_param[(node_i, node_j)] = distance
 
         line_idx += 1
 
@@ -97,18 +77,19 @@ def read_data_gvrp(filename="gvrp_instance.txt"):
     print(f"  M (clusters): {M}")
     print(f"  Cluster demands: {q_cluster}")
     print(f"  Nodes per cluster: {cluster_nodes}")
+    print(f"Arcs List:{arc_list}")
+    # Return parsed data
+    return N, K, Q, M, q_cluster, a, arc_list, cost_param, depot_node_id
 
-    return N, K, Q, M, q_cluster, a, cost_matrix
 
-
-def build_gvrp_model(N, K, Q, M, q_cluster, a, costs):
+def build_gvrp_model(N, K, Q, M, q_cluster, a, arc_list, cost_param, depot_node_id):
 
     # 1. process data
     V_set = range(N)
-    A_set = [(i, j) for i in V_set for j in V_set if i != j] # set of arcs
+    A_set = arc_list # set of arcs
 
     a_param = {i: a[i] for i in V_set}
-    c_param = {(i, j): costs[i][j] for i, j in A_set} #costs
+    c_param = cost_param #costs
     q_cluster_param = {k: q_cluster[k] for k in range(M + 1)}
 
     # 2. model init
@@ -118,9 +99,9 @@ def build_gvrp_model(N, K, Q, M, q_cluster, a, costs):
     # V: set of vertices (0 is depot)
     model.V = Set(initialize=V_set, doc="Set of all nodes (0 is depot)")
     # V_cust: set of customer vertices (without depot)
-    model.V_cust = Set(initialize=[i for i in V_set if i != 0])
+    model.V_cust = Set(initialize=[i for i in V_set if i != depot_node_id])
     # A: set of arcs
-    model.A = Set(within=model.V * model.V, initialize=A_set)
+    model.A = Set(dimen=2, initialize=A_set)
     # Cluster Set
     model.C = Set(initialize=range(M + 1), doc="Set of clusters")
 
@@ -160,9 +141,15 @@ def build_gvrp_model(N, K, Q, M, q_cluster, a, costs):
         return sum(model.x[i,j] for j in model.V if (i,j) in model.A) == 1
     model.visit_out = pyo.Constraint(model.V_cust, rule=visit_out_rule, doc='customer is left once')
 
+    # 7.x. exactly K vehicles return to the depot (Equivalent to x(δ-(C0)) = K)
+    def depot_in_rule(model):
+        # We check arcs from any customer node back to the depot
+        return sum(model.x[j,depot_node_id] for j in model.V_cust if (j,depot_node_id) in model.A) == model.K
+    model.depot_in = pyo.Constraint(rule=depot_in_rule, doc='K vehicles return to depot')
+
     # 7.3. exactly K vehicles depart from the depot (Equivalent to x(δ+(C0)) = K)
     def depot_out_rule(model):
-        return sum(model.x[0,j] for j in model.V_cust if (0,j) in model.A) == model.K
+        return sum(model.x[depot_node_id,j] for j in model.V_cust if (depot_node_id,j) in model.A) == model.K
     model.depot_out = pyo.Constraint(rule=depot_out_rule, doc='K vehicles depart depot')
 
     # 7.4. route continuity
@@ -178,7 +165,7 @@ def build_gvrp_model(N, K, Q, M, q_cluster, a, costs):
 
     # flow balance -> q[a(i)] is the cluster demand of node i:
     def flow_balance_rule(model, i):
-        if i == 0:
+        if i == depot_node_id:
             return Constraint.Skip  # depot has no demand
 
         sum_f_out = sum(model.f[i,j] for j in model.V if (i,j) in model.A)
@@ -224,13 +211,13 @@ def build_gvrp_model(N, K, Q, M, q_cluster, a, costs):
 # solve the generator's random instances
 if __name__ == "__main__":
     # Read instance from generator output
-    instance_filename = "./5_10_4/0.txt"
+    instance_filename = "./5_15_4/0.txt"
 
     try:
-        N, K, Q, M, q_cluster, a, cost_matrix = read_data_gvrp(instance_filename)
+        N, K, Q, M, q_cluster, a, arc_list, cost_param, depot_node_id = read_data_gvrp(instance_filename)
 
         # Build model
-        model = build_gvrp_model(N, K, Q, M, q_cluster, a, cost_matrix)
+        model = build_gvrp_model(N, K, Q, M, q_cluster, a, arc_list, cost_param, depot_node_id)
 
         print("\n----- Model created successfully -----")
         print(f"Model has {len(model.A)} arcs, {len(model.V_cust)} customers, {M} clusters")
