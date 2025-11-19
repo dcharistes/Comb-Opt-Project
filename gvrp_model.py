@@ -1,6 +1,7 @@
 import sys
 import pyomo.environ as pyo
 from pyomo.environ import Set, Param, Var, Objective, Constraint, Binary, NonNegativeReals, minimize, inequality
+import gurobipy
 
 def read_data_gvrp(filename="gvrp_instance.txt"):
     with open(filename, "r") as f:
@@ -79,10 +80,10 @@ def read_data_gvrp(filename="gvrp_instance.txt"):
     print(f"  Nodes per cluster: {cluster_nodes}")
     print(f"Arcs List:{arc_list}")
     # Return parsed data
-    return N, K, Q, M, q_cluster, a, arc_list, cost_param, depot_node_id
+    return N, K, Q, M, q_cluster, a, arc_list, cost_param, depot_node_id, cluster_nodes
 
 
-def build_gvrp_model(N, K, Q, M, q_cluster, a, arc_list, cost_param, depot_node_id):
+def build_gvrp_model(N, K, Q, M, q_cluster, a, arc_list, cost_param, depot_node_id, cluster_nodes):
 
     # 1. process data
     V_set = range(N)
@@ -92,30 +93,40 @@ def build_gvrp_model(N, K, Q, M, q_cluster, a, arc_list, cost_param, depot_node_
     c_param = cost_param #costs
     q_cluster_param = {k: q_cluster[k] for k in range(M + 1)}
 
+    # Store cluster nodes map as a parameter for use in rules
+    cluster_nodes_param = {k: cluster_nodes[k] for k in range(M + 1)}
+
     # 2. model init
     model = pyo.ConcreteModel()
 
     # 3. sets
     # V: set of vertices (0 is depot)
-    model.V = Set(initialize=V_set, doc="Set of all nodes (0 is depot)")
+    model.V = pyo.Set(initialize=V_set, doc="Set of all nodes (0 is depot)")
     # V_cust: set of customer vertices (without depot)
-    model.V_cust = Set(initialize=[i for i in V_set if i != depot_node_id])
+    model.V_cust = pyo.Set(initialize=[i for i in V_set if i != depot_node_id])
     # A: set of arcs
-    model.A = Set(dimen=2, initialize=A_set)
+    model.A = pyo.Set(dimen=2, initialize=A_set)
     # Cluster Set
-    model.C = Set(initialize=range(M + 1), doc="Set of clusters")
+    model.C = pyo.Set(initialize=range(M + 1), doc="Set of clusters")
+    # C_cust: Set of customer clusters (1 to M)
+    model.C_cust = pyo.Set(initialize=range(1, M + 1), doc="Set of customer clusters (M\{0})")
 
     # 4. params
     # c[i, j]: cost of arc (i, j)
-    model.c = Param(model.A, initialize=c_param)
+    model.c = pyo.Param(model.A, initialize=c_param)
     # a(i): the cluster index of vertex i
-    model.a = Param(model.V, initialize=a_param)
+    model.a = pyo.Param(model.V, initialize=a_param)
     # q[a(i)]: demand of cluster a(i) that the i node is in it.
-    model.q_cluster = Param(model.C, initialize=q_cluster_param)
+    model.q_cluster = pyo.Param(model.C, initialize=q_cluster_param)
+    # Cluster_nodes: map from cluster ID to list of node IDs
+    model.cluster_nodes = pyo.Param(model.C, initialize=cluster_nodes_param)
     # Q: vehicle capacity
-    model.Q = Param(initialize=Q)
+    model.Q = pyo.Param(initialize=Q)
     # K: number of available vehicles
-    model.K = Param(initialize=K)
+    model.K = pyo.Param(initialize=K)
+
+    Total_Demand_Value = sum(q_cluster[k] for k in range(1, M + 1))
+    model.D_total = pyo.Param(initialize=Total_Demand_Value, doc="Total demand of all customer clusters")
 
     # 5. vars
     # x[i, j]: binary variable -> 1 if arc (i, j) is traversed, 0 otherwise
@@ -132,20 +143,20 @@ def build_gvrp_model(N, K, Q, M, q_cluster, a, arc_list, cost_param, depot_node_
     # 7. constraints
 
     # 7.1. each customer has a exactly one emtering arc (Equivalent to x(δ-(Ck)) = 1)
-    def visit_in_rule(model, i):
-        return sum(model.x[j,i] for j in model.V if (j,i) in model.A) == 1
-    model.visit_in = pyo.Constraint(model.V_cust, rule=visit_in_rule, doc='customer is entered once')
+    def visit_in_rule(model, k):
+        return sum(model.x[j,i] for i in model.cluster_nodes[k] for j in model.V if (j,i) in model.A) == 1
+    model.visit_in = pyo.Constraint(model.C_cust, rule=visit_in_rule, doc='customer is entered once')
 
     # 7.2. each customer has a exactly one leaving arc (x(δ+(Ck)) = 1)
-    def visit_out_rule(model, i):
-        return sum(model.x[i,j] for j in model.V if (i,j) in model.A) == 1
-    model.visit_out = pyo.Constraint(model.V_cust, rule=visit_out_rule, doc='customer is left once')
+    def visit_out_rule(model, k):
+        return sum(model.x[i,j] for i in model.cluster_nodes[k] for j in model.V if (i,j) in model.A) == 1
+    model.visit_out = pyo.Constraint(model.C_cust, rule=visit_out_rule, doc='customer is left once')
 
-    # 7.x. exactly K vehicles return to the depot (Equivalent to x(δ-(C0)) = K)
-    def depot_in_rule(model):
-        # We check arcs from any customer node back to the depot
-        return sum(model.x[j,depot_node_id] for j in model.V_cust if (j,depot_node_id) in model.A) == model.K
-    model.depot_in = pyo.Constraint(rule=depot_in_rule, doc='K vehicles return to depot')
+    # # 7.x. exactly K vehicles return to the depot (Equivalent to x(δ-(C0)) = K)
+    # def depot_in_rule(model):
+    #     # We check arcs from any customer node back to the depot
+    #     return sum(model.x[j,depot_node_id] for j in model.V_cust if (j,depot_node_id) in model.A) == model.K
+    # model.depot_in = pyo.Constraint(rule=depot_in_rule, doc='K vehicles return to depot')
 
     # 7.3. exactly K vehicles depart from the depot (Equivalent to x(δ+(C0)) = K)
     def depot_out_rule(model):
@@ -171,39 +182,44 @@ def build_gvrp_model(N, K, Q, M, q_cluster, a, arc_list, cost_param, depot_node_
         sum_f_out = sum(model.f[i,j] for j in model.V if (i,j) in model.A)
         sum_f_in = sum(model.f[j,i] for j in model.V if (j,i) in model.A)
 
-        # term (sum(x_ji) + sum(x_ij)) is 2 for a visited customer node
-        sum_x_in = sum(model.x[j,i] for j in model.V if (j,i) in model.A)
-        sum_x_out = sum(model.x[i,j] for j in model.V if (i,j) in model.A)
+        if i == depot_node_id:
+            # Depot flow: Out - In = -Total Demand
+            # Total flow leaving depot must equal the total demand collected/delivered.
+            return sum_f_out - sum_f_in == -model.D_total
+        else:
+            # term (sum(x_ji) + sum(x_ij)) is 2 for a visited customer node
+            sum_x_in = sum(model.x[j,i] for j in model.V if (j,i) in model.A)
+            sum_x_out = sum(model.x[i,j] for j in model.V if (i,j) in model.A)
 
-        # constraint: flow and assignment link. ensures the commodity (demand) is dropped
-        lhs = sum_f_out - sum_f_in
-        cluster_i = model.a[i]
-        rhs = 0.5 * model.q_cluster[cluster_i] * (sum_x_in + sum_x_out)
-        return lhs == rhs
+            # constraint: flow and assignment link. ensures the commodity (demand) is dropped
+            lhs = sum_f_out - sum_f_in
+            cluster_i = model.a[i]
+            rhs = -0.5 * model.q_cluster[cluster_i] * (sum_x_in + sum_x_out)
+            return lhs == rhs
     model.flow_balance = pyo.Constraint(model.V_cust, rule=flow_balance_rule, doc='commodity flow balance at customer nodes')
 
     # 7.6. capacity constraints
     # strengthened bound 9 from the paper:
 
     # capacity lower bound -> flow of arc i,j >= the cluster demand of the node i. if the arc ij, is used
-    def capacity_lower_rule(model, i, j):
-        if i == j:
-            return pyo.Constraint().Skip()
+    # def capacity_lower_rule(model, i, j):
+    #     if i == j:
+    #         return pyo.Constraint().Skip()
 
-        cluster_i = model.a[i]
-        return model.f[i,j] >= model.q_cluster[cluster_i] * model.x[i,j]
+    #     cluster_i = model.a[i]
+    #     return model.f[i,j] >= model.q_cluster[cluster_i] * model.x[i,j]
 
-    model.capacity_lower = pyo.Constraint(model.A, rule=capacity_lower_rule, doc='flow must carry at least the starting node demand')
+    # model.capacity_lower = pyo.Constraint(model.A, rule=capacity_lower_rule, doc='flow must carry at least the starting node demand')
 
     # capacity upper bound -> (flow_ij) <=  (vehicle capacity) - (the cluster demand of node j)
-    def capacity_upper_rule(model, i, j):
+    def capacity_simple_rule(model, i, j):
         if i == j:
             return pyo.Constraint.Skip
 
         cluster_j = model.a[j]
-        return model.f[i,j] <= (model.Q - model.q_cluster[cluster_j]) * model.x[i,j]
+        return model.f[i,j] <= (model.Q) * model.x[i,j]
 
-    model.capacity_upper = pyo.Constraint(model.A, rule=capacity_upper_rule, doc='flow must respect remaining vehicle capacity')
+    model.capacity_simple = pyo.Constraint(model.A, rule=capacity_simple_rule, doc='flow must respect remaining vehicle capacity')
 
     return model
 
@@ -211,13 +227,13 @@ def build_gvrp_model(N, K, Q, M, q_cluster, a, arc_list, cost_param, depot_node_
 # solve the generator's random instances
 if __name__ == "__main__":
     # Read instance from generator output
-    instance_filename = "./5_15_4/0.txt"
+    instance_filename = "./5_10_4/0.txt"
 
     try:
-        N, K, Q, M, q_cluster, a, arc_list, cost_param, depot_node_id = read_data_gvrp(instance_filename)
+        N, K, Q, M, q_cluster, a, arc_list, cost_param, depot_node_id, cluster_nodes = read_data_gvrp(instance_filename)
 
         # Build model
-        model = build_gvrp_model(N, K, Q, M, q_cluster, a, arc_list, cost_param, depot_node_id)
+        model = build_gvrp_model(N, K, Q, M, q_cluster, a, arc_list, cost_param, depot_node_id, cluster_nodes)
 
         print("\n----- Model created successfully -----")
         print(f"Model has {len(model.A)} arcs, {len(model.V_cust)} customers, {M} clusters")
