@@ -78,7 +78,7 @@ def read_data_gvrp(filename="gvrp_instance.txt"):
     print(f"  M (clusters): {M}")
     print(f"  Cluster demands: {q_cluster}")
     print(f"  Nodes per cluster: {cluster_nodes}")
-    print(f"Arcs List:{arc_list}")
+    # print(f"Arcs List:{arc_list}")
     # Return parsed data
     return N, K, Q, M, q_cluster, a, arc_list, cost_param, depot_node_id, cluster_nodes
 
@@ -176,25 +176,25 @@ def build_gvrp_model(N, K, Q, M, q_cluster, a, arc_list, cost_param, depot_node_
 
     # flow balance -> q[a(i)] is the cluster demand of node i:
     def flow_balance_rule(model, i):
-        if i == depot_node_id:
-            return Constraint.Skip  # depot has no demand
+        # if i == depot_node_id:
+        #     return Constraint.Skip  # depot has no demand
 
         sum_f_out = sum(model.f[i,j] for j in model.V if (i,j) in model.A)
         sum_f_in = sum(model.f[j,i] for j in model.V if (j,i) in model.A)
 
         if i == depot_node_id:
             # Depot flow: Out - In = -Total Demand
-            # Total flow leaving depot must equal the total demand collected/delivered.
+            # Total flow leaving depot minus the flow entering the depot (after all the pickups) must equal the minus total pickup demand.
             return sum_f_out - sum_f_in == -model.D_total
         else:
             # term (sum(x_ji) + sum(x_ij)) is 2 for a visited customer node
             sum_x_in = sum(model.x[j,i] for j in model.V if (j,i) in model.A)
             sum_x_out = sum(model.x[i,j] for j in model.V if (i,j) in model.A)
 
-            # constraint: flow and assignment link. ensures the commodity (demand) is dropped
+            # constraint: flow and assignment link. ensures the commodity (demand) is picked up
             lhs = sum_f_out - sum_f_in
             cluster_i = model.a[i]
-            rhs = -0.5 * model.q_cluster[cluster_i] * (sum_x_in + sum_x_out)
+            rhs = 0.5 * model.q_cluster[cluster_i] * (sum_x_in + sum_x_out)
             return lhs == rhs
     model.flow_balance = pyo.Constraint(model.V_cust, rule=flow_balance_rule, doc='commodity flow balance at customer nodes')
 
@@ -202,24 +202,24 @@ def build_gvrp_model(N, K, Q, M, q_cluster, a, arc_list, cost_param, depot_node_
     # strengthened bound 9 from the paper:
 
     # capacity lower bound -> flow of arc i,j >= the cluster demand of the node i. if the arc ij, is used
-    # def capacity_lower_rule(model, i, j):
-    #     if i == j:
-    #         return pyo.Constraint().Skip()
+    def capacity_lower_rule(model, i, j):
+        if i == j:
+            return pyo.Constraint().Skip()
 
-    #     cluster_i = model.a[i]
-    #     return model.f[i,j] >= model.q_cluster[cluster_i] * model.x[i,j]
+        cluster_i = model.a[i]
+        return model.f[i,j] >= model.q_cluster[cluster_i] * model.x[i,j]
 
-    # model.capacity_lower = pyo.Constraint(model.A, rule=capacity_lower_rule, doc='flow must carry at least the starting node demand')
+    model.capacity_lower = pyo.Constraint(model.A, rule=capacity_lower_rule, doc='flow must carry at least the starting node demand')
 
     # capacity upper bound -> (flow_ij) <=  (vehicle capacity) - (the cluster demand of node j)
-    def capacity_simple_rule(model, i, j):
+    def capacity_upper_rule(model, i, j):
         if i == j:
             return pyo.Constraint.Skip
 
         cluster_j = model.a[j]
-        return model.f[i,j] <= (model.Q) * model.x[i,j]
+        return model.f[i,j] <= (model.Q - model.q_cluster[cluster_j]) * model.x[i,j]
 
-    model.capacity_simple = pyo.Constraint(model.A, rule=capacity_simple_rule, doc='flow must respect remaining vehicle capacity')
+    model.capacity_simple = pyo.Constraint(model.A, rule=capacity_upper_rule, doc='flow must respect remaining vehicle capacity')
 
     return model
 
@@ -227,7 +227,7 @@ def build_gvrp_model(N, K, Q, M, q_cluster, a, arc_list, cost_param, depot_node_
 # solve the generator's random instances
 if __name__ == "__main__":
     # Read instance from generator output
-    instance_filename = "./5_10_4/0.txt"
+    instance_filename = "./10_100_10/0.txt"
 
     try:
         N, K, Q, M, q_cluster, a, arc_list, cost_param, depot_node_id, cluster_nodes = read_data_gvrp(instance_filename)
