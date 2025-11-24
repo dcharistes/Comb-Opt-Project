@@ -5,46 +5,45 @@ import os
 
 
 
-V=0 #num of vertices
-D=0 # total demand
+V=0 #total number of vertices
 K=0 #num of vehicles
-num_clusters=0
+num_clusters=0 #number of customer clusters
 Q=15 #capacity of vehicle
 grid_size=0
 CUSTOMER_POINT=1
 DEPOT_POINT=2
-PR=0 #num of problems created
-
+PR=0 #number of random problems
 
 class Point:
     def __init__(self, x=0, y=0):
         self.x = x
         self.y = y
 
-
 #function to add the Depot
 def add_depot(grid, points):
     print("--Adding the Depot to the grid (step 1)")
-    
-    #adding the Depot to a random point in the grid
+
+    # Choose random coordinates
     points[0].x = random.randint(0, grid_size - 1)
     points[0].y = random.randint(0, grid_size - 1)
 
+    # Mark depot position on grid
     grid[points[0].x][points[0].y] = DEPOT_POINT
 
-    return 0
+
+    return 0 #depot index
 
 
 # Function to add Customers to grid 
 def add_customers(grid, points):
     print("--Adding Customers to the grid (step 2)")
 
-    i = 1  
+    i = 1  # customer indices start from 1 (0 is the depot)
     while i < V:
         x = random.randint(0, grid_size - 1)
         y = random.randint(0, grid_size - 1)
 
-        #adding the customers to random available points
+        #cell must be empty
         if grid[x][y] == 0:
             points[i].x = x
             points[i].y = y
@@ -52,24 +51,24 @@ def add_customers(grid, points):
             i += 1
 
 
-# Function that groups random customers together in a cluster
+# Function that creates random clusters between the customers
 def create_clusters(points, depot_index, num_clusters):
     print("--Creating Clusters (step 3)")
 
     clusters = dict()
-    clusters[0] = [depot_index]  # C0 has only the depot
+    clusters[0] = [depot_index]  # C0 is the depot cluster
 
-    # take all the customers
+    # Get all customer indices
     customer_indices = [i for i in range(len(points)) if i != depot_index]
 
-    # shufles them randomly
+    # shuffle randomly the indices
     random.shuffle(customer_indices)
 
-    # create m clusters (C1...Cm)
+    # Initialize empty clusters (C1..Cm)
     for i in range(1, num_clusters + 1):
         clusters[i] = []
 
-    # assign all the customers in m clusters
+    # Assign the customers to the clusters in a cycle until every one is part of a cluster
     for idx, customer in enumerate(customer_indices):
         cluster_id = (idx % num_clusters) + 1  
         clusters[cluster_id].append(customer) 
@@ -77,7 +76,7 @@ def create_clusters(points, depot_index, num_clusters):
     return clusters 
 
 
-# Function that stores all the possible arcs and claculates their distance
+# Function that create arcs between every cluster pair and calculates the distance using the Manhattan distance
 def conectivity(points, clusters):
     print("--Creating all the arcs that connect all Clusters with each other (step 4)")
 
@@ -89,13 +88,13 @@ def conectivity(points, clusters):
 
         for cid_b in cluster_ids:
             if cid_a == cid_b:
-                continue  # αγνοούμε αποστάσεις μέσα στο ίδιο cluster
+                continue  # no arcs inside the same cluster
 
             customers_b = clusters[cid_b]
 
-            # Για κάθε σημείο i στο cluster A
+            # for every customer in cluster A
             for i in customers_a:
-                # Για κάθε σημείο j στο cluster B
+                # for every customer in cluster B
                 for j in customers_b:
                     xi, yi = points[i].x, points[i].y
                     xj, yj = points[j].x, points[j].y
@@ -103,11 +102,12 @@ def conectivity(points, clusters):
                     # Manhattan distance
                     dist = abs(xi - xj) + abs(yi - yj)
 
-                    # Προσθήκη στο πίνακα των arcs
                     A.append((i, j, dist))
 
     return A
 
+
+# Function that assign demand to clusters (not per customer)
 def add_Demand(clusters):
     print("--Adding a total demand to each Cluster (step 5)")
 
@@ -116,12 +116,13 @@ def add_Demand(clusters):
 
     for cid in cluster_ids:
 
-        d = random.randint(1,Q)
+        d = random.randint(1,Q) # cluster demand
         D.append((cid, d))
 
     return D
 
 
+# Function that saves the instance to disk in a text file
 def save_on_disk(grid, clusters, A, D, points, filename="0"):
 
     folder_name = str(grid_size) + "_" + str(V) + "_" + str(num_clusters)
@@ -187,6 +188,7 @@ def parse_arguments():
     # Parse arguments
     args = parser.parse_args()
 
+    # Update global variables
     global grid_size, V, num_clusters, K, Q, PR
     grid_size = args.grid_size
     V = args.V
@@ -205,7 +207,7 @@ if __name__ == "__main__":
         # Define grid
         grid = numpy.zeros(shape=(grid_size,grid_size), dtype=int)
         
-        # Define points list
+        # Define points list (0 = depot)
         points = [Point() for i in range(V)]
 
         depot_index = add_depot(grid, points)
@@ -217,13 +219,6 @@ if __name__ == "__main__":
         A = conectivity(points, clusters)
 
         D = add_Demand(clusters)
-
-
-        # Generate (x, y) coordinates for all points in the grid
-        #point_coords = numpy.array([(i // grid_size, i % grid_size) for i in range(grid_size * grid_size)])
-        
-
-
         
         # Save problem on disk
         save_on_disk(grid, clusters, A, D, points, str(i))
