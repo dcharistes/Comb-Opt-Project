@@ -5,31 +5,32 @@ import os
 
 
 
-V=0
-D=0
+V=0 #num of vertices
+D=0 # total demand
 K=0 #num of vehicles
 num_clusters=0
 Q=15 #capacity of vehicle
 grid_size=0
 CUSTOMER_POINT=1
 DEPOT_POINT=2
-num_clusters=0
-PR=0
+PR=0 #num of problems created
+
 
 class Point:
     def __init__(self, x=0, y=0):
         self.x = x
         self.y = y
 
+
 #function to add the Depot
 def add_depot(grid, points):
     print("--Adding the Depot to the grid (step 1)")
-
+    
+    #adding the Depot to a random point in the grid
     points[0].x = random.randint(0, grid_size - 1)
     points[0].y = random.randint(0, grid_size - 1)
 
     grid[points[0].x][points[0].y] = DEPOT_POINT
-
 
     return 0
 
@@ -43,6 +44,7 @@ def add_customers(grid, points):
         x = random.randint(0, grid_size - 1)
         y = random.randint(0, grid_size - 1)
 
+        #adding the customers to random available points
         if grid[x][y] == 0:
             points[i].x = x
             points[i].y = y
@@ -50,29 +52,32 @@ def add_customers(grid, points):
             i += 1
 
 
+# Function that groups random customers together in a cluster
 def create_clusters(points, depot_index, num_clusters):
     print("--Creating Clusters (step 3)")
 
     clusters = dict()
-    clusters[0] = [depot_index]  # C0 περιέχει μόνο το depot
+    clusters[0] = [depot_index]  # C0 has only the depot
 
-    # Πάρε όλους τους υπόλοιπους πελάτες
+    # take all the customers
     customer_indices = [i for i in range(len(points)) if i != depot_index]
 
-    # Ανακάτεψέ τους τυχαία
+    # shufles them randomly
     random.shuffle(customer_indices)
 
-    # Δημιούργησε m clusters (C1...Cm)
+    # create m clusters (C1...Cm)
     for i in range(1, num_clusters + 1):
         clusters[i] = []
 
-    # Μοίρασε τους πελάτες στους m clusters
+    # assign all the customers in m clusters
     for idx, customer in enumerate(customer_indices):
-        cluster_id = (idx % num_clusters) + 1  # κυκλικά στους m clusters
-        clusters[cluster_id].append(customer) # στο cluster1 βαζει τον customer 0...
+        cluster_id = (idx % num_clusters) + 1  
+        clusters[cluster_id].append(customer) 
 
     return clusters 
 
+
+# Function that stores all the possible arcs and claculates their distance
 def conectivity(points, clusters):
     print("--Creating all the arcs that connect all Clusters with each other (step 4)")
 
