@@ -7,7 +7,7 @@ def read_data_gvrp(filename="gvrp_instance.txt"):
     with open(filename, "r") as f:
         lines = [line.strip() for line in f if line.strip()]
 
-    # Parse header line
+    # parse header line
     header = lines[0].split()
     grid_total_nodes = int(header[0])  # grid_size * grid_size
     V = int(header[1])                 # number of nodes
@@ -15,7 +15,7 @@ def read_data_gvrp(filename="gvrp_instance.txt"):
     K = int(header[3])                 # number of vehicles
     Q = float(header[4])               # vehicle capacity
 
-    # Parse clusters
+    # parse clusters
     line_idx = 2  # Skip header line + line with 'M Clusters:'
     cluster_nodes = {}
     a = []  # node-to-cluster mapping, sequential indexing will be used
@@ -23,7 +23,7 @@ def read_data_gvrp(filename="gvrp_instance.txt"):
     node_coords = []
 
     depot_node_id = None
-    node_id_map = {}  # Map from (x,y) to sequential node ID
+    node_id_map = {}  # map (x,y) to sequential node ID, not grid id
 
     current_node_id = 0
     while "Arcs:" not in lines[line_idx]:
@@ -42,7 +42,7 @@ def read_data_gvrp(filename="gvrp_instance.txt"):
             cluster_nodes[cluster_id] = []
         cluster_nodes[cluster_id].append(current_node_id)
 
-        # Assign cluster demand (assume all nodes within a cluster have same demand)
+        # assign cluster demand (all nodes within a cluster have same demand)
         q_cluster[cluster_id] = demand
 
         if cluster_id == 0:
@@ -51,10 +51,10 @@ def read_data_gvrp(filename="gvrp_instance.txt"):
         current_node_id += 1
         line_idx += 1
 
-    N = current_node_id  # Actual number of nodes (depot + customers)
+    N = current_node_id  # number of nodes (depot + customers)
 
-    # Parse arcs
-    line_idx += 1  # Skip 'Arcs:' line
+    # arcs
+    line_idx += 1  # skip 'Arcs:' line
     arc_list = []
     cost_param = {}
     while line_idx < len(lines):
@@ -78,7 +78,6 @@ def read_data_gvrp(filename="gvrp_instance.txt"):
     print(f"  M (clusters): {M}")
     print(f"  Cluster demands: {q_cluster}")
     print(f"  Nodes per cluster: {cluster_nodes}")
-    # print(f"Arcs List:{arc_list}")
     # Return parsed data
     return N, K, Q, M, q_cluster, a, arc_list, cost_param, depot_node_id, cluster_nodes
 
