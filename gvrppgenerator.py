@@ -52,26 +52,72 @@ def add_customers(grid, points):
 
 
 # Function that creates random clusters between the customers
-def create_clusters(points, depot_index, num_clusters):
-    print("--Creating Clusters (step 3)")
+# Function that creates clusters using a proximity-based regional approach
+# with a strategic initial placement of up to 5 seeds.
+def create_clusters(points, depot_index, num_clusters, grid_size):
+    print("--Creating Clusters using Strategic Proximity Seeds (step 3 - Enhanced)")
 
     clusters = dict()
     clusters[0] = [depot_index]  # C0 is the depot cluster
-
-    # Get all customer indices
-    customer_indices = [i for i in range(len(points)) if i != depot_index]
-
-    # shuffle randomly the indices
-    random.shuffle(customer_indices)
 
     # Initialize empty clusters (C1..Cm)
     for i in range(1, num_clusters + 1):
         clusters[i] = []
 
-    # Assign the customers to the clusters in a cycle until every one is part of a cluster
-    for idx, customer in enumerate(customer_indices):
-        cluster_id = (idx % num_clusters) + 1  
-        clusters[cluster_id].append(customer) 
+    # 1. Define Strategic Seed Points 
+    
+    # Calculate grid center (must be an integer coordinate)
+    center = grid_size // 2 
+    max_coord = grid_size - 1
+
+    # Define the 5 strategic locations
+    strategic_locations = [
+        Point(0, 0),             # C1: Top-Left Corner
+        Point(max_coord, 0),     # C2: Top-Right Corner
+        Point(0, max_coord),     # C3: Bottom-Left Corner
+        Point(max_coord, max_coord), # C4: Bottom-Right Corner
+        Point(center, center)    # C5: Center of the Grid
+    ]
+    
+    seed_points = []
+    
+    # Use strategic seeds first (up to num_clusters)
+    num_strategic = min(num_clusters, 5) #if we have num_clusters <= 5 we set the seeds in the order of the list strategic_locations
+    seed_points.extend(strategic_locations[:num_strategic])
+
+    # 2. Fill remaining seeds randomly if num_clusters > 5
+    num_of_randoms = num_clusters - num_strategic
+    
+    for i in range(num_of_randoms):
+        seed_x = random.randint(0, grid_size - 1)
+        seed_y = random.randint(0, grid_size - 1)
+        seed_points.append(Point(seed_x, seed_y))
+
+    # 3. Assign every customer to the closest seed point (region)
+    customer_indices = [i for i in range(len(points)) if i != depot_index]
+    
+    for customer_idx in customer_indices:
+        cx, cy = points[customer_idx].x, points[customer_idx].y
+        min_dist = float('inf')
+        best_cluster_id = -1
+
+        # Compare the customer's distance to every seed point
+        for seed_idx, seed in enumerate(seed_points):
+            sx, sy = seed.x, seed.y
+            
+            # Manhattan distance (consistent with your arc calculation)
+            dist = abs(cx - sx) + abs(cy - sy)
+            
+            if dist < min_dist:
+                min_dist = dist
+                # The cluster IDs start from 1, so seed_idx + 1
+                best_cluster_id = seed_idx + 1 
+            elif dist == min_dist:
+                # Tie-breaking: assign to the lower cluster ID
+                if seed_idx + 1 < best_cluster_id:
+                     best_cluster_id = seed_idx + 1
+
+        clusters[best_cluster_id].append(customer_idx)
 
     return clusters 
 
@@ -213,9 +259,8 @@ if __name__ == "__main__":
         depot_index = add_depot(grid, points)
 
         add_customers(grid, points)
-        
-        clusters = create_clusters(points, depot_index, num_clusters)
 
+        clusters = create_clusters(points, depot_index, num_clusters, grid_size)
         A = conectivity(points, clusters)
 
         D = add_Demand(clusters)
