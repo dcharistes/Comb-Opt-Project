@@ -151,11 +151,11 @@ def build_gvrp_model(N, K, Q, M, q_cluster, a, arc_list, cost_param, depot_node_
         return sum(model.x[i,j] for i in model.cluster_nodes[k] for j in model.V if (i,j) in model.A) == 1
     model.visit_out = pyo.Constraint(model.C_cust, rule=visit_out_rule, doc='customer is left once')
 
-    # # 7.x. exactly K vehicles return to the depot (Equivalent to x(δ-(C0)) = K)
-    # def depot_in_rule(model):
-    #     # We check arcs from any customer node back to the depot
-    #     return sum(model.x[j,depot_node_id] for j in model.V_cust if (j,depot_node_id) in model.A) == model.K
-    # model.depot_in = pyo.Constraint(rule=depot_in_rule, doc='K vehicles return to depot')
+    # 7.x. exactly K vehicles return to the depot (Equivalent to x(δ-(C0)) = K)
+    def depot_in_rule(model):
+        # We check arcs from any customer node back to the depot
+        return sum(model.x[j,depot_node_id] for j in model.V_cust if (j,depot_node_id) in model.A) == model.K
+    model.depot_in = pyo.Constraint(rule=depot_in_rule, doc='K vehicles return to depot')
 
     # 7.3. exactly K vehicles depart from the depot (Equivalent to x(δ+(C0)) = K)
     def depot_out_rule(model):
@@ -226,7 +226,7 @@ def build_gvrp_model(N, K, Q, M, q_cluster, a, arc_list, cost_param, depot_node_
 # solve the generator's random instances
 if __name__ == "__main__":
     # Read instance from generator output
-    instance_filename = "./10_100_10/0.txt"
+    instance_filename = "./20_350_25/0.txt"
 
     try:
         N, K, Q, M, q_cluster, a, arc_list, cost_param, depot_node_id, cluster_nodes = read_data_gvrp(instance_filename)
