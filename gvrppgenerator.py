@@ -95,31 +95,66 @@ def create_clusters(points, depot_index, num_clusters, grid_size):
 
     # 3. Assign every customer to the closest seed point (region)
     customer_indices = [i for i in range(len(points)) if i != depot_index]
-    
-    for customer_idx in customer_indices:
-        cx, cy = points[customer_idx].x, points[customer_idx].y
-        min_dist = float('inf')
-        best_cluster_id = -1
 
-        # Compare the customer's distance to every seed point
-        for seed_idx, seed in enumerate(seed_points):
-            sx, sy = seed.x, seed.y
+    # Set to keep track of customers already assigned to a cluster
+    assigned_customers = set()
+    
+    # --- 2. GUARANTEE PHASE: "Draft Pick" ---
+    # Force assign one customer to every cluster to ensure none are empty
+    
+    for seed_idx, seed in enumerate(seed_points):
+        sx, sy = seed.x, seed.y
+        best_cust_idx = -1
+        min_dist = float('inf')
+        found_match = False
+
+        # Find the closest *available* customer for this seed
+        for cust_idx in customer_indices:
+            if cust_idx in assigned_customers:
+                continue # Skip customers already taken by previous seeds
             
-            # Manhattan distance (consistent with your arc calculation)
+            cx, cy = points[cust_idx].x, points[cust_idx].y
             dist = abs(cx - sx) + abs(cy - sy)
             
             if dist < min_dist:
                 min_dist = dist
-                # The cluster IDs start from 1, so seed_idx + 1
+                best_cust_idx = cust_idx
+                found_match = True
+        
+        # Assign the winner to this cluster
+        if found_match:
+            cluster_id = seed_idx + 1
+            clusters[cluster_id].append(best_cust_idx)
+            assigned_customers.add(best_cust_idx)
+
+    # --- 3. FILL PHASE: Assign remaining customers ---
+    # Assign the rest of the customers to their closest cluster normally
+    
+    for customer_idx in customer_indices:
+        if customer_idx in assigned_customers:
+            continue # Skip customers already assigned in the guarantee phase
+
+        cx, cy = points[customer_idx].x, points[customer_idx].y
+        min_dist = float('inf')
+        best_cluster_id = -1
+
+        # Compare distance to every seed
+        for seed_idx, seed in enumerate(seed_points):
+            sx, sy = seed.x, seed.y
+            
+            dist = abs(cx - sx) + abs(cy - sy)
+            
+            if dist < min_dist:
+                min_dist = dist
                 best_cluster_id = seed_idx + 1 
             elif dist == min_dist:
-                # Tie-breaking: assign to the lower cluster ID
+                # Tie-breaking
                 if seed_idx + 1 < best_cluster_id:
                      best_cluster_id = seed_idx + 1
 
         clusters[best_cluster_id].append(customer_idx)
 
-    return clusters 
+    return clusters
 
 
 # Function that create arcs between every cluster pair and calculates the distance using the Manhattan distance
