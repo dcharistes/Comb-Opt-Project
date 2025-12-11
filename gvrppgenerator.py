@@ -51,7 +51,6 @@ def add_customers(grid, points):
             i += 1
 
 
-# Function that creates random clusters between the customers
 # Function that creates clusters using a proximity-based regional approach
 # with a strategic initial placement of up to 5 seeds.
 def create_clusters(points, depot_index, num_clusters, grid_size):
@@ -99,16 +98,14 @@ def create_clusters(points, depot_index, num_clusters, grid_size):
     # Set to keep track of customers already assigned to a cluster
     assigned_customers = set()
     
-    # --- 2. GUARANTEE PHASE: "Draft Pick" ---
-    # Force assign one customer to every cluster to ensure none are empty
-    
+    # Force assign one customer to every cluster to ensure none are empty    
     for seed_idx, seed in enumerate(seed_points):
         sx, sy = seed.x, seed.y
         best_cust_idx = -1
         min_dist = float('inf')
         found_match = False
 
-        # Find the closest *available* customer for this seed
+        # Find the closest available customer for this seed
         for cust_idx in customer_indices:
             if cust_idx in assigned_customers:
                 continue # Skip customers already taken by previous seeds
@@ -121,15 +118,13 @@ def create_clusters(points, depot_index, num_clusters, grid_size):
                 best_cust_idx = cust_idx
                 found_match = True
         
-        # Assign the winner to this cluster
+        # Assign the match to this cluster
         if found_match:
             cluster_id = seed_idx + 1
             clusters[cluster_id].append(best_cust_idx)
             assigned_customers.add(best_cust_idx)
 
-    # --- 3. FILL PHASE: Assign remaining customers ---
-    # Assign the rest of the customers to their closest cluster normally
-    
+    # Assign the rest of the customers to their closest cluster normally   
     for customer_idx in customer_indices:
         if customer_idx in assigned_customers:
             continue # Skip customers already assigned in the guarantee phase
