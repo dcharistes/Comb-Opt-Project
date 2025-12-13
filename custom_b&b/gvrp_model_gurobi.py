@@ -201,4 +201,4 @@ def gvrp_model_gurobi(filename):
     #model.Params.method = 1 # Dual Simplex
     model.update()
 
-    return model, ub, lb, integer_var, num_vars, c
+    return model, ub, lb, integer_var, num_vars, c, arc_list, arc_to_idx
