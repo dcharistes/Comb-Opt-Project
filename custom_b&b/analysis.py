@@ -1,5 +1,5 @@
 import gvrp_model_gurobi as pg
-import b_and_b_algorithm as bb
+import b_and_b_new as bb
 import numpy as np
 import heuristics as hr
 import time
@@ -88,7 +88,15 @@ for i in range(1, num_vars + 1):
 bb_start = time.time()
 solutions, best_idx, count = bb.branch_and_bound(
     model_bb, ub, lb, integer_var,
-    best_bound_per_depth, nodes_per_depth
+    best_bound_per_depth, nodes_per_depth,
+    # NEW: pass GVRP data for cuts
+    num_arcs=len(arc_list),
+    arc_list=arc_list,
+    a=a,
+    q_cluster=q_cluster,
+    Q=Q,
+    M=M,
+    vars_list=vars_list
 )
 bb_end = time.time()
 
