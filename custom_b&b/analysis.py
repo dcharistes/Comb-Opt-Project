@@ -1,5 +1,6 @@
 import gvrp_model_gurobi as pg
-import b_and_b_new as bb
+import b_and_b_cuts as bb
+import b_and_b_algorithm as bb_v1
 import numpy as np
 import heuristics as hr
 import time
