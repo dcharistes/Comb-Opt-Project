@@ -155,37 +155,19 @@ def gvrp_model_gurobi(filename):
 
     # cuts
     # --- CUT 1: Minimum Vehicles Cut (Strengthened) ---
-    total_demand = sum(q_cluster)
+    # total_demand = sum(q_cluster)
 
-    # Bound A: Simple volume bound
-    min_k_vol = math.ceil(total_demand / Q)
+    # # Bound A: Simple volume bound
+    # min_k_vol = math.ceil(total_demand / Q)
 
-    # Bound B: "Large Item" bound (Bin Packing Lower Bound L1)
-    # Count how many clusters have demand > Q/2. No two can be in the same vehicle.
-    large_clusters = sum(1 for d in q_cluster if d > Q/2)
+    # # Bound B: "Large Item" bound (Bin Packing Lower Bound L1)
+    # # Count how many clusters have demand > Q/2. No two can be in the same vehicle.
+    # large_clusters = sum(1 for d in q_cluster if d > Q/2)
 
-    min_k = max(min_k_vol, large_clusters)
+    # min_k = max(min_k_vol, large_clusters)
 
-    model.addLConstr(gp.quicksum(depot_out_arcs) >= min_k, name="MinVehiclesCut")
-    print(f"Added MinVehicles Cut: Vehicles >= {min_k} (Volume LB: {min_k_vol}, Large Item LB: {large_clusters})")
-
-    # --- CUT 3: 2-Cycle Elimination ---
-    # Prevent u->v->u loops
-    cut_2cycles = 0
-    processed_pairs = set()
-    for (u, v) in arc_list:
-        if u == depot_id or v == depot_id: continue
-
-        # Check if reverse arc exists
-        if (v, u) in arc_to_idx:
-            # Sort tuple to ensure unique processing
-            pair = tuple(sorted((u, v)))
-            if pair not in processed_pairs:
-                model.addLConstr(get_x(u, v) + get_x(v, u) <= 1, name=f"No2Cycle_{u}_{v}")
-                processed_pairs.add(pair)
-                cut_2cycles += 1
-
-    print(f"Added 2-Cycle Elimination Cuts: {cut_2cycles} constraints.")
+    # model.addLConstr(gp.quicksum(depot_out_arcs) >= min_k, name="MinVehiclesCut")
+    # print(f"Added MinVehicles Cut: Vehicles >= {min_k} (Volume LB: {min_k_vol}, Large Item LB: {large_clusters})")
 
     # C4: route continuity (node flow conservation for x)
     for i in range(N):
