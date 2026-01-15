@@ -335,7 +335,7 @@ def branch_and_bound(model, ub, lb, integer_var, best_bound_per_depth, nodes_per
                         # Store solution, number of solutions and best sol index (and return)
                         solutions.append([x_candidate, x_obj, current_node.depth])
                         solutions_found += 1
-                        if (abs(x_obj - best_sol_obj) <= 1e-6) or solutions_found == 1:
+                        if (abs(x_obj - best_sol_obj) <= 1e-6) or solutions_found >= 1:
                             best_sol_obj = x_obj
                             best_sol_idx = solutions_found - 1
 
