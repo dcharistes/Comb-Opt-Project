@@ -74,38 +74,37 @@ def check_depth_completion(depth, nodes_per_depth, best_bound_per_depth, lb, ub,
 
 
 def separate_capacity_cuts(model, vars_list, num_arcs, arc_list, a, q_cluster, Q, M, epsilon=1e-4):
-    """
-    Separates capacity/subtour cuts over small cluster subsets.
-    Returns a list of violated cuts (gp.LinExpr >= rhs).
-    """
-    # FIX: Retrieve values safely (vars_list is a tupledict)
+
+    # Separates capacity cuts over small cluster subsets.
+    # returns a list of violated cuts (they are then added as linear constraints in gp.LinExpr >= rhs).
+    # retrieve values (vars_list is a tupledict)
     all_vals = model.getAttr('X', vars_list)
-    # Access by index since your keys are 0..num_vars-1
+    # access by index since keys are 0..num_vars-1
     x_val = [all_vals[i] for i in range(num_arcs)]
 
-    # Build cluster-cluster edge weights
-    cluster_edge_weight = [[0.0] * (M + 1) for _ in range(M + 1)]
+    # cluster-cluster edge weights
+    cluster_edge_vehicles = [[0.0] * (M + 1) for _ in range(M + 1)]
     for idx, (u, v) in enumerate(arc_list):
         ku = a[u]
         kv = a[v]
         if ku == 0 and kv == 0:
             continue
-        cluster_edge_weight[ku][kv] += x_val[idx]
+        cluster_edge_vehicles[ku][kv] += x_val[idx]
 
     def x_delta_S(S):
-        """Sum of x on arcs crossing the cluster set S."""
+        # sum of x on arcs crossing the cluster set S.
         Sset = set(S)
         total = 0.0
         for k in Sset:
             for l in range(M + 1):
                 if l not in Sset:
-                    total += cluster_edge_weight[k][l]
-                    total += cluster_edge_weight[l][k]
+                    total += cluster_edge_vehicles[k][l]
+                    total += cluster_edge_vehicles[l][k]
         return total
 
     violated = []
 
-    # Single clusters
+    # single clusters
     for k in range(1, M + 1):
         qS = q_cluster[k]
         rS = math.ceil(qS / Q)
@@ -116,7 +115,7 @@ def separate_capacity_cuts(model, vars_list, num_arcs, arc_list, a, q_cluster, Q
         if lhs < rhs - epsilon:
             violated.append(([k], lhs, rhs))
 
-    # Pairs
+    # pairs
     for k in range(1, M + 1):
         for l in range(k + 1, M + 1):
             qS = q_cluster[k] + q_cluster[l]
@@ -128,10 +127,10 @@ def separate_capacity_cuts(model, vars_list, num_arcs, arc_list, a, q_cluster, Q
             if lhs < rhs - epsilon:
                 violated.append(([k, l], lhs, rhs))
 
-    # Sort by violation (most violated first)
+    # sort by violation (most violated first)
     violated.sort(key=lambda x: x[2] - x[1], reverse=True)
 
-    # Build cut expressions
+    # build cut expressions
     cuts = []
     for S, lhs_val, rhs_val in violated[:MAX_CUTS_PER_NODE]:
         Sset = set(S)
@@ -146,14 +145,14 @@ def separate_capacity_cuts(model, vars_list, num_arcs, arc_list, a, q_cluster, Q
     return cuts
 
 
-# Definition of the branch & bound algorithm.
+# def branch & bound .
 def branch_and_bound(model, ub, lb, integer_var, best_bound_per_depth, nodes_per_depth,
                      # GVRP-specific data for cut separation
                      num_arcs=None, arc_list=None, a=None, q_cluster=None, Q=None, M=None, vars_list=None,
                      vbasis=[], cbasis=[], depth=0):
     global nodes, lower_bound, upper_bound
 
-    # We force conversion to Python INT (arbitrary precision) to avoid OverflowError
+    # force Python INT to avoid OverflowError
     if not isinstance(nodes_per_depth[0], (int, np.integer)) or nodes_per_depth[0] == 0:
         print("WARNING: Re-initializing nodes_per_depth as arbitrary-precision integers.")
         nodes_per_depth = np.array([0] * len(nodes_per_depth), dtype=object)
@@ -161,7 +160,7 @@ def branch_and_bound(model, ub, lb, integer_var, best_bound_per_depth, nodes_per
         for i in range(1, len(nodes_per_depth)):
             nodes_per_depth[i] = nodes_per_depth[i - 1] * 2
 
-    # Create stack using deque() structure
+    # create stack using deque() structure
     stack = deque()
     solutions = list()
     solutions_found = 0
@@ -172,17 +171,16 @@ def branch_and_bound(model, ub, lb, integer_var, best_bound_per_depth, nodes_per
     else:
         best_sol_obj = np.inf
 
-    # Create root node
+    # create root node
     root_node = Node(ub, lb, depth, vbasis, cbasis, -1, "root")
 
-    # =============== Root node ==========================
     if DEBUG_MODE:
         debug_print()
 
-    # Solve relaxed problem
+    # relaxed problem bound
     model.optimize()
 
-    # Check if the model was solved to optimality. If not then return (infeasible).
+    # check if the model was solved to optimality. If not then return (infeasible).
     if model.status != GRB.OPTIMAL:
         if isMax:
             if DEBUG_MODE:
@@ -268,7 +266,7 @@ def branch_and_bound(model, ub, lb, integer_var, best_bound_per_depth, nodes_per
 
         # Warm start solver. Use the vbasis and cbasis that parent node passed to the current one.
         if (len(current_node.vbasis) != 0) and (len(current_node.cbasis) != 0):
-            # FIX: Only load CBasis if constraint counts match (avoids crash when cuts are added)
+            # only load CBasis if constraint counts match (avoids crash when cuts are added)
             constrs = model.getConstrs()
             if len(constrs) == len(current_node.cbasis):
                 model.setAttr("CBasis", constrs, current_node.cbasis)
@@ -314,9 +312,7 @@ def branch_and_bound(model, ub, lb, integer_var, best_bound_per_depth, nodes_per
             # Get the objective value
             x_obj = model.ObjVal
 
-            # ===========================
             # DYNAMIC CAPACITY CUTS
-            # ===========================
             if ENABLE_DYNAMIC_CUTS and current_node.depth > 0 and len(stack) > 0:
                 if num_arcs is not None and arc_list is not None:
                     cuts = separate_capacity_cuts(

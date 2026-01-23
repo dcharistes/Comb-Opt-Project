@@ -3,13 +3,10 @@ import random
 import copy
 import time
 
-# ==========================================
-#        Core Helper Functions
-# ==========================================
 
 def getAssignmentCost(routes, cost_matrix, depot_id):
     """
-    Calculates the total cost of the GVRP solution (Sum of all route distances).
+    total cost of the GVRP solution (sum of all route distances).
     """
     total_cost = 0
     for route in routes:
@@ -28,37 +25,52 @@ def check_feasibility(routes, Q, q_cluster, a, M):
     """
     Checks if the GVRP solution is feasible (Capacity + Cluster Constraints).
     """
-    # 1. Check Capacity
+
+    # # check vehicle count
+    # if K is not None:
+    #     num_vehicles = len([r for r in routes if len(r) > 0])
+    #     # If your problem is "Exactly K":
+    #     if num_vehicles != K:
+    #         return False
+    #     # If your problem is "At most K":
+    #     # if num_vehicles > K:
+    #     #    return False
+
+    # # check if edges exist
+    # for i in range(len(route)-1):
+    #     u, v = route[i], route[i+1]
+    #     if (u,v) not in cost_matrix and (u,v) not in arc_list_set:
+    #         return False # Impossible path
+
+
+    # capacity check
     for route in routes:
         load = sum(q_cluster[a[node]] for node in route)
         if load > Q:
             return False
 
-    # 2. Check all clusters visited exactly once
+    # all clusters visited exactly once
     visited_clusters = set()
     for route in routes:
         for node in route:
             clust = a[node]
             if clust in visited_clusters:
-                return False # Visited twice
+                return False # twice
             visited_clusters.add(clust)
 
     if len(visited_clusters) != M:
-        return False # Not all visited
+        return False # some are not visited
 
     return True
 
-# ==========================================
-#        Myopic Heuristic
-# ==========================================
-
+# myopic heurisitc
 def myopic_heuristic(N, K, Q, M, q_cluster, a, cost_matrix, depot_id, cluster_nodes):
     print("************************ Running myopic heuristic    ************************\n\n")
 
     routes = []
     unvisited = set(range(1, M + 1))
 
-    # Greedy construction
+    # construction
     for k in range(K):
         if not unvisited: break
         route = []
@@ -70,7 +82,7 @@ def myopic_heuristic(N, K, Q, M, q_cluster, a, cost_matrix, depot_id, cluster_no
             best_dist = 1e9
             best_cl = None
 
-            # Find nearest feasible neighbor
+            # nearest feasible neighbor
             possible_clusters = list(unvisited)
             for cl in possible_clusters:
                 dem = q_cluster[cl]
@@ -92,7 +104,7 @@ def myopic_heuristic(N, K, Q, M, q_cluster, a, cost_matrix, depot_id, cluster_no
                 break
         routes.append(route)
 
-    # Check status
+    # check status
     status = check_feasibility(routes, Q, q_cluster, a, M)
     total_cost = getAssignmentCost(routes, cost_matrix, depot_id)
 
@@ -103,9 +115,7 @@ def myopic_heuristic(N, K, Q, M, q_cluster, a, cost_matrix, depot_id, cluster_no
 
     return status, routes, total_cost
 
-# ==========================================
-#        VNS Algorithm
-# ==========================================
+# VNS metaheuristic
 
 def VNS_algorithm(kmax, max_iterations, solution_routes, solution_cost, N, K, Q, M, q_cluster, a, cost_matrix, depot_id, cluster_nodes):
     print("************************ Running Variable Neighborhood Search    ************************\n\n")
@@ -113,7 +123,7 @@ def VNS_algorithm(kmax, max_iterations, solution_routes, solution_cost, N, K, Q,
     current_sol = copy.deepcopy(solution_routes)
     current_sol_cost = solution_cost
 
-    # Create neighborhoods (In GVRP, this defines 'k' intensities 1..kmax)
+    # Create neighborhoods (for 'k' intensities 1..kmax)
     neighborhoods = create_neighborhoods(kmax)
 
     iterations = 0
@@ -122,16 +132,16 @@ def VNS_algorithm(kmax, max_iterations, solution_routes, solution_cost, N, K, Q,
         while k < kmax:
             k_intensity = neighborhoods[k]
 
-            # Shaking
+            # shaking
             new_sol, new_sol_cost = shaking(current_sol, k_intensity, N, Q, q_cluster, a, cost_matrix, depot_id)
 
-            # Local Search
-            # We iterate through all clusters to try re-optimizing their positions
+            # local search
+            #  iterate all clusters to re-optimize their positions
             all_clusters_neighborhood = list(range(1, M + 1))
 
             new_sol, new_sol_cost = local_search_vns(all_clusters_neighborhood, new_sol, N, Q, M, q_cluster, a, cost_matrix, depot_id, cluster_nodes)
 
-            # Acceptance
+            # accpted
             if new_sol_cost < current_sol_cost - 1e-6:
                 current_sol_cost = new_sol_cost
                 current_sol = new_sol
@@ -148,12 +158,12 @@ def VNS_algorithm(kmax, max_iterations, solution_routes, solution_cost, N, K, Q,
     return current_sol, current_sol_cost
 
 def create_neighborhoods(kmax):
-    # In GVRP VNS, 'neighborhoods' are levels of shaking intensity
+    # in our gvrp problem, VNS 'neighborhoods' are levels of shaking intensity
     return list(range(1, kmax + 1))
 
 def shaking(solution, k, N, Q, q_cluster, a, cost_matrix, depot_id):
     """
-    Perturbs solution by performing 'k' random Relocate moves.
+    Perturbs solution with 'k' random relocate moves.
     """
     temp_routes = copy.deepcopy(solution)
     moves_done = 0
@@ -162,24 +172,24 @@ def shaking(solution, k, N, Q, q_cluster, a, cost_matrix, depot_id):
     while moves_done < k and attempts < k*10:
         attempts += 1
 
-        # Pick random source
+        # random source
         non_empty = [i for i, r in enumerate(temp_routes) if len(r) > 0]
         if not non_empty: break
         r_idx = random.choice(non_empty)
         node_idx = random.randint(0, len(temp_routes[r_idx])-1)
         val = temp_routes[r_idx][node_idx]
 
-        # Pick random target
+        # random target
         target_r_idx = random.randint(0, len(temp_routes)-1)
 
-        # Check capacity
+        # check for capacity
         demand = q_cluster[a[val]]
         current_load = sum(q_cluster[a[n]] for n in temp_routes[target_r_idx])
 
         if r_idx != target_r_idx and current_load + demand > Q:
             continue
 
-        # Execute move
+        # the move
         temp_routes[r_idx].pop(node_idx)
         insert_pos = random.randint(0, len(temp_routes[target_r_idx]))
         temp_routes[target_r_idx].insert(insert_pos, val)
@@ -206,10 +216,9 @@ def find_best_val(clust_idx, solution, N, Q, M, q_cluster, a, cost_matrix, depot
     """
     Finds the best position (route & index) and best node for the given cluster 'clust_idx'.
     """
-    # 1. Start by removing the cluster from its current position
-    # We work on a copy to simulate "trying all values" for this variable
-
-    # Locate current position
+    # remove the cluster from its current position
+    # use a copy to try all values for this variable
+    # get current pos
     current_r_idx = -1
     current_n_idx = -1
     for r_i, route in enumerate(solution):
@@ -220,45 +229,42 @@ def find_best_val(clust_idx, solution, N, Q, M, q_cluster, a, cost_matrix, depot
                 break
         if current_r_idx != -1: break
 
-    if current_r_idx == -1: return solution # Should not happen
+    if current_r_idx == -1: return solution
 
-    # Store original node to restore if no better move found (or to facilitate swapping logic)
+    # store original node to restore if no better move found
     removed_node = solution[current_r_idx][current_n_idx]
 
-    # Create the "empty slot" state by removing the node
+    # create empty slot by removing the node
     temp_sol = copy.deepcopy(solution)
     temp_sol[current_r_idx].pop(current_n_idx)
 
     best_sol_found = copy.deepcopy(solution) # Default to current state
     min_cost = getAssignmentCost(solution, cost_matrix, depot_id) # Baseline cost
 
-    # 2. Iterate through ALL possible assignments (Route, Index, Node_in_Cluster)
-    # This loop is equivalent to `for val in range(N)` in p-center
+    # iterate ALL possible assignments (route, idx, node_in_clust)
+    # equiv is `for val in range(N)` in p-center
 
     for r_idx in range(len(temp_sol)):
         route = temp_sol[r_idx]
 
-        # Optimization: Pre-check capacity before inner loop
-        # But `check_feasibility` inside the loop will handle it formally if we strictly follow structure
-        # To be strictly structural to heuristics.py:
-
+        # check_feasibility inside the loop will handle a forbidden load based ono the capacity
         for i in range(len(route) + 1):
             for candidate_node in cluster_nodes[clust_idx]:
 
-                # Assign value (Insert node)
+                # insert node in the route
                 route.insert(i, candidate_node)
 
-                # Check Feasibility
+                # check feasibility from gvrp_model constraints
                 if check_feasibility(temp_sol, Q, q_cluster, a, M):
                     # Calculate Cost
                     cost = getAssignmentCost(temp_sol, cost_matrix, depot_id)
 
-                    # Update if better
+                    # update if better
                     if cost < min_cost:
                         min_cost = cost
                         best_sol_found = copy.deepcopy(temp_sol)
 
-                # Backtrack (Remove inserted node to try next)
+                # backtrack. remove inserted node -> try next
                 route.pop(i)
 
     return best_sol_found

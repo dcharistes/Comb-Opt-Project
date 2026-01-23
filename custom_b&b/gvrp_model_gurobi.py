@@ -153,22 +153,6 @@ def gvrp_model_gurobi(filename):
     model.addLConstr(gp.quicksum(depot_out_arcs) == K, name="DepotOut")
     model.addLConstr(gp.quicksum(depot_in_arcs) == K, name="DepotIn")
 
-    # cuts
-    # --- CUT 1: Minimum Vehicles Cut (Strengthened) ---
-    # total_demand = sum(q_cluster)
-
-    # # Bound A: Simple volume bound
-    # min_k_vol = math.ceil(total_demand / Q)
-
-    # # Bound B: "Large Item" bound (Bin Packing Lower Bound L1)
-    # # Count how many clusters have demand > Q/2. No two can be in the same vehicle.
-    # large_clusters = sum(1 for d in q_cluster if d > Q/2)
-
-    # min_k = max(min_k_vol, large_clusters)
-
-    # model.addLConstr(gp.quicksum(depot_out_arcs) >= min_k, name="MinVehiclesCut")
-    # print(f"Added MinVehicles Cut: Vehicles >= {min_k} (Volume LB: {min_k_vol}, Large Item LB: {large_clusters})")
-
     # C4: route continuity (node flow conservation for x)
     for i in range(N):
         x_in = gp.quicksum(get_x(u, i) for u in range(N) if (u, i) in arc_to_idx)
