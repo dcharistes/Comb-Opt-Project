@@ -19,10 +19,9 @@ for (u, v) in arc_list: cost_matrix[(u, v)] = cost_param[(u, v)]
 
 print("\n\n")
 
-# ==============================================================================
-# 1. Run Heuristics (Myopic -> VNS)
-# ==============================================================================
-print("************************ Running Heuristics    ************************\n")
+# Run Heuristics (Myopic -> VNS)
+
+print("************************ Running Heuristics ************************\n")
 heur_start = time.time()
 
 # A. Myopic Heuristic
@@ -130,11 +129,7 @@ if final_solution is not None:
 print(f"Objective Value: {solutions[best_idx][1]}")
 print(f"Tree depth: {solutions[best_idx][2]}")
 
-
-# ==============================================================================
-# 3. Summary
-# ==============================================================================
-print("\n\n************************ Summary    ************************\n")
+print("\n\n************************ Results ************************\n")
 
 print(f"{'Method':<25} | {'Cost':<15} | {'Time (s)':<15}")
 print("-" * 60)
@@ -145,3 +140,4 @@ val_bb = f"{bb_obj:.2f}" if bb_obj != np.inf else "Inf"
 print(f"{'Myopic Heuristic':<25} | {val_heur:<15} | {'-':<15}")
 print(f"{'VNS Metaheuristic':<25} | {val_vns:<15} | {heur_end - heur_start:<15.4f}")
 print(f"{'Custom B&B':<25} | {val_bb:<15} | {bb_end - bb_start:<15.4f}")
+print(f"VNS Vehicles Used: {vns_vehicles}/{K}")
