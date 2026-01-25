@@ -4,6 +4,7 @@ import numpy as np
 import time
 from collections import deque
 import math
+import heapq
 
 # Set sense (min/max)
 isMax = False
@@ -28,14 +29,22 @@ def is_nearly_integer(value, tolerance=1e-6):
 
 # A class 'Node' that holds information of a node
 class Node:
-    def __init__(self, ub, lb, depth, vbasis, cbasis, branching_var, label=""):
+    def __init__(self, ub, lb, depth, vbasis, cbasis, branching_var, priority_val, label=""):
         self.ub = ub
         self.lb = lb
         self.depth = depth
         self.vbasis = vbasis
         self.cbasis = cbasis
         self.branching_var = branching_var
+        self.priority_val = priority_val
         self.label = label
+
+    def __lt__(self, other):
+        if isMax:
+            return self.priority_val > other.priority_val
+        else:
+            # process the lower obj value first, for min problem
+            return self.priority_val < other.priority_val
 
 # A simple function to print debugging info
 def debug_print(node=None, x_obj=None, sol_status=None):
@@ -161,7 +170,7 @@ def branch_and_bound(model, ub, lb, integer_var, best_bound_per_depth, nodes_per
             nodes_per_depth[i] = nodes_per_depth[i - 1] * 2
 
     # create stack using deque() structure
-    stack = deque()
+    pq = []
     solutions = list()
     solutions_found = 0
     best_sol_idx = 0
@@ -172,7 +181,12 @@ def branch_and_bound(model, ub, lb, integer_var, best_bound_per_depth, nodes_per
         best_sol_obj = np.inf
 
     # create root node
-    root_node = Node(ub, lb, depth, vbasis, cbasis, -1, "root")
+    if isMax:
+        root_priority = -np.inf
+    else:
+        root_priority = np.inf
+
+    root_node = Node(ub, lb, depth, vbasis, cbasis, -1, root_priority, "root")
 
     if DEBUG_MODE:
         debug_print()
@@ -199,6 +213,7 @@ def branch_and_bound(model, ub, lb, integer_var, best_bound_per_depth, nodes_per
 
     # Check if all variables have integer values (from the ones that are supposed to be integers)
     vars_have_integer_vals = True
+    selected_var_idx = -1
     for idx, is_int_var in enumerate(integer_var):
         if is_int_var and not is_nearly_integer(x_candidate[idx]):
             vars_have_integer_vals = False
@@ -240,26 +255,23 @@ def branch_and_bound(model, ub, lb, integer_var, best_bound_per_depth, nodes_per
     right_lb[selected_var_idx] = np.ceil(x_candidate[selected_var_idx])
 
     # Create child nodes
-    left_child = Node(left_ub, left_lb, root_node.depth + 1, vbasis.copy(), cbasis.copy(), selected_var_idx, "Left")
-    right_child = Node(right_ub, right_lb, root_node.depth + 1, vbasis.copy(), cbasis.copy(), selected_var_idx, "Right")
+    left_child = Node(left_ub, left_lb, root_node.depth + 1, vbasis.copy(), cbasis.copy(), selected_var_idx, x_obj, "Left")
+    right_child = Node(right_ub, right_lb, root_node.depth + 1, vbasis.copy(), cbasis.copy(), selected_var_idx, x_obj, "Right")
 
     # Add child nodes in stack
-    stack.append(right_child)
-    stack.append(left_child)
+    heapq.heappush(pq, right_child)
+    heapq.heappush(pq, left_child)
 
     # Solving sub problems
     # While the stack has nodes, continue solving
-    while(len(stack) != 0):
+    while(len(pq) != 0):
         print("\n******************************** NEW NODE BEING EXPLORED ******************************** ")
 
         # Increment total nodes by 1
         nodes += 1
 
         # Get the child node on top of stack
-        current_node = stack[-1]
-
-        # Remove this node from stack
-        stack.pop()
+        current_node = heapq.heappop(pq)
 
         # Increase the nodes visited for current depth
         nodes_per_depth[current_node.depth] -= 1
@@ -313,7 +325,7 @@ def branch_and_bound(model, ub, lb, integer_var, best_bound_per_depth, nodes_per
             x_obj = model.ObjVal
 
             # DYNAMIC CAPACITY CUTS
-            if ENABLE_DYNAMIC_CUTS and current_node.depth > 0 and len(stack) > 0:
+            if ENABLE_DYNAMIC_CUTS and current_node.depth > 0 and len(pq) > 0:
                 if num_arcs is not None and arc_list is not None:
                     cuts = separate_capacity_cuts(
                         model, vars_list, num_arcs, arc_list, a, q_cluster, Q, M
@@ -377,7 +389,7 @@ def branch_and_bound(model, ub, lb, integer_var, best_bound_per_depth, nodes_per
                 if abs(lower_bound - upper_bound) < 1e-6:
                     solutions.append([x_candidate, x_obj, current_node.depth])
                     solutions_found += 1
-                    if (abs(x_obj - best_sol_obj) < 1e-6) or solutions_found == 1:
+                    if (abs(x_obj - best_sol_obj) < 1e-6) or solutions_found >= 1:
                         best_sol_obj = x_obj
                         best_sol_idx = solutions_found - 1
                     if DEBUG_MODE:
@@ -386,7 +398,7 @@ def branch_and_bound(model, ub, lb, integer_var, best_bound_per_depth, nodes_per
 
                 solutions.append([x_candidate, x_obj, current_node.depth])
                 solutions_found += 1
-                if (abs(x_obj - best_sol_obj) <= 1e-6) or solutions_found == 1:
+                if (abs(x_obj - best_sol_obj) <= 1e-6) or solutions_found >= 1:
                     best_sol_obj = x_obj
                     best_sol_idx = solutions_found - 1
 
@@ -489,11 +501,11 @@ def branch_and_bound(model, ub, lb, integer_var, best_bound_per_depth, nodes_per
         right_lb[selected_var_idx] = np.ceil(x_candidate[selected_var_idx])
 
         # Create child nodes
-        left_child = Node(left_ub, left_lb, current_node.depth + 1, vbasis.copy(), cbasis.copy(), selected_var_idx, "Left")
-        right_child = Node(right_ub, right_lb, current_node.depth + 1, vbasis.copy(), cbasis.copy(), selected_var_idx, "Right")
+        left_child = Node(left_ub, left_lb, current_node.depth + 1, vbasis.copy(), cbasis.copy(), selected_var_idx, x_obj, "Left")
+        right_child = Node(right_ub, right_lb, current_node.depth + 1, vbasis.copy(), cbasis.copy(), selected_var_idx, x_obj, "Right")
 
         # Add child nodes in stack
-        stack.append(right_child)
-        stack.append(left_child)
+        heapq.heappush(pq, right_child)
+        heapq.heappush(pq, left_child)
 
     return solutions, best_sol_idx, solutions_found
