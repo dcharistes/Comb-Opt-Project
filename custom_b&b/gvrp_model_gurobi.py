@@ -191,11 +191,15 @@ def gvrp_model_gurobi(filename):
         dem_u = q_cluster[a[u]]
         dem_v = q_cluster[a[v]]
 
-        # lb -> load must be at least what the truck picked up at u
-        model.addLConstr(f_var >= dem_u * x_var, name=f"CapLow_{u}_{v}")
+        if u == depot_id:
+            model.addLConstr(f_var == 0, name=f"Start empty_{v}")
 
-        # up -> load must have space for what the truck will pick up at v
-        model.addLConstr(f_var <= (Q - dem_v) * x_var, name=f"CapUp_{u}_{v}")
+        else:
+            # lb -> load must be at least what the truck picked up at u
+            model.addLConstr(f_var >= dem_u * x_var, name=f"CapLow_{u}_{v}")
+
+            # up -> load must have space for what the truck will pick up at v
+            model.addLConstr(f_var <= (Q - dem_v) * x_var, name=f"CapUp_{u}_{v}")
 
     # 6. Final Setup
     model.ModelSense = GRB.MINIMIZE
