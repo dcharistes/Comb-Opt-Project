@@ -42,8 +42,8 @@ class Node:
 # A simple function to print debugging info
 def debug_print(node=None, x_obj=None, sol_status=None):
     print("\n\n----------------- DEBUG OUTPUT -----------------\n\n")
-    print(f"UB:{upper_bound}")
-    print(f"LB:{lower_bound}")
+    print(f"Global UB:{upper_bound}")
+    print(f"Global LB:{lower_bound}")
     if node is not None:
         print(f"Branching Var: {node.branching_var}")
     if node is not None:
@@ -55,24 +55,6 @@ def debug_print(node=None, x_obj=None, sol_status=None):
     if sol_status is not None:
         print(f"Solution status: {sol_status}")
     print("\n\n--------------------------------------------------\n\n")
-
-def check_depth_completion(depth, nodes_per_depth, best_bound_per_depth, lb, ub, isMax, DEBUG_MODE):
-    stop = False
-    # If all nodes in the current depth have been visited
-    if nodes_per_depth[depth] == 0:
-        if isMax:
-            # Update Global Upper Bound
-            ub = best_bound_per_depth[depth]
-            if ub <= lb + 1e-6:  # Check termination
-                if DEBUG_MODE: print("Global UB hit LB (Level Completed). Stopping.")
-                stop = True
-        else:
-            # Update Global Lower Bound
-            lb = best_bound_per_depth[depth]
-            if lb >= ub - 1e-6:  # Check termination
-                if DEBUG_MODE: print("Global LB hit UB (Level Completed). Stopping.")
-                stop = True
-    return stop, lb, ub
 
 
 def separate_capacity_cuts(model, vars_list, num_arcs, arc_list, a, q_cluster, Q, M, epsilon=1e-4):
@@ -155,13 +137,13 @@ def branch_and_bound(model, ub, lb, integer_var, best_bound_per_depth, nodes_per
                      vbasis=[], cbasis=[], depth=0):
     global nodes, lower_bound, upper_bound
 
-    # We force conversion to Python INT (arbitrary precision) to avoid OverflowError
-    if not isinstance(nodes_per_depth[0], (int, np.integer)) or nodes_per_depth[0] == 0:
-        print("WARNING: Re-initializing nodes_per_depth as arbitrary-precision integers.")
-        nodes_per_depth = np.array([0] * len(nodes_per_depth), dtype=object)
-        nodes_per_depth[0] = 1
-        for i in range(1, len(nodes_per_depth)):
-            nodes_per_depth[i] = nodes_per_depth[i - 1] * 2
+    # Initialize Global Objective Bounds correctly as Scalars
+    if isMax:
+        lower_bound = -np.inf
+        upper_bound = np.inf
+    else:
+        upper_bound = np.inf
+        lower_bound = -np.inf
 
     # Create heap queue structure
     heap = []
@@ -175,6 +157,7 @@ def branch_and_bound(model, ub, lb, integer_var, best_bound_per_depth, nodes_per
         best_sol_obj = np.inf
 
     # Create root node
+    # Note: ub and lb here are expected to be LISTS (variable bounds vectors)
     root_node = Node(ub, lb, depth, vbasis, cbasis, -1, "root")
 
     # =============== Root node ==========================
@@ -184,328 +167,198 @@ def branch_and_bound(model, ub, lb, integer_var, best_bound_per_depth, nodes_per
     # Solve relaxed problem
     model.optimize()
 
-    # Check if the model was solved to optimality. If not then return (infeasible).
+    # Check if the model was solved to optimality.
     if model.status != GRB.OPTIMAL:
-        if isMax:
-            if DEBUG_MODE:
-                debug_print(node=root_node, sol_status="Infeasible")
-            return [], -np.inf, depth
-        else:
-            if DEBUG_MODE:
-                debug_print(node=root_node, sol_status="Infeasible")
-            return [], np.inf, depth
+        if DEBUG_MODE: print("Root Infeasible.")
+        return [], -1, 0
 
-    # Get the solution (variable assignments)
+    # Get the solution
     x_candidate = model.getAttr('X', model.getVars())
-
-    # Get the objective value
     x_obj = model.ObjVal
 
-    # Check if all variables have integer values (from the ones that are supposed to be integers)
+    # Check integer variables
     vars_have_integer_vals = True
-    min=10
+    min_dist = 10
+    selected_var_idx = -1
     for idx, is_int_var in enumerate(integer_var):
         if is_int_var and not is_nearly_integer(x_candidate[idx]):
             vars_have_integer_vals = False
-            if abs(x_candidate[idx] - 0.5) < min:
-                min = abs(x_candidate[idx] - 0.5)
+            # Pick variable closest to 0.5 for branching
+            if abs(x_candidate[idx] - 0.5) < min_dist:
+                min_dist = abs(x_candidate[idx] - 0.5)
                 selected_var_idx = idx
 
-    # Found feasible solution.
+    # If root is integer, we are done
     if vars_have_integer_vals:
-        # If we have feasible solution in root, then terminate
         solutions.append([x_candidate, x_obj, depth])
-        solutions_found += 1
-        if DEBUG_MODE:
-            debug_print(node=root_node, x_obj=x_obj, sol_status="Integer")
-        return solutions, best_sol_idx, solutions_found
+        if DEBUG_MODE: debug_print(node=root_node, x_obj=x_obj, sol_status="Integer at Root")
+        return solutions, 0, 1
 
-    # Otherwise update lower/upper bound for min/max respectively
+    # Otherwise update bounds
+    if isMax:
+        # For Max, root relaxation is the global Upper Bound
+        pass 
     else:
-        if isMax:
-            upper_bound = x_obj
-        else:
-            lower_bound = x_obj
-        if DEBUG_MODE:
-            debug_print(node=root_node, x_obj=x_obj, sol_status="Fractional")
+        # For Min, root relaxation is the global Lower Bound
+        pass
 
-    # Warm start simplex
+    if DEBUG_MODE:
+        debug_print(node=root_node, x_obj=x_obj, sol_status="Fractional")
+
+    # Warm start info
     if WARM_START:
-        # Retrieve vbasis and cbasis
         vbasis = model.getAttr("VBasis", model.getVars())
         cbasis = model.getAttr("CBasis", model.getConstrs())
 
-    # Create lower bounds and upper bounds for the variables of the child nodes
-    left_lb = np.copy(lb)
-    left_ub = np.copy(ub)
-    right_lb = np.copy(lb)
-    right_ub = np.copy(ub)
+    # Update variable bounds for branching
+    var_lbs = model.getAttr("LB", model.getVars())
+    var_ubs = model.getAttr("UB", model.getVars())
+    
+    left_var_lb = np.array(var_lbs)
+    left_var_ub = np.array(var_ubs)
+    right_var_lb = np.array(var_lbs)
+    right_var_ub = np.array(var_ubs)
 
-    # Create left and right branches (e.g. set left: x = 0, right: x = 1 in a binary problem)
-    left_ub[selected_var_idx] = np.floor(x_candidate[selected_var_idx])
-    right_lb[selected_var_idx] = np.ceil(x_candidate[selected_var_idx])
+    left_var_ub[selected_var_idx] = np.floor(x_candidate[selected_var_idx])
+    right_var_lb[selected_var_idx] = np.ceil(x_candidate[selected_var_idx])
 
-    # Create child nodes
-    left_child = Node(left_ub, left_lb, root_node.depth + 1, vbasis.copy(), cbasis.copy(), selected_var_idx, "Left")
-    right_child = Node(right_ub, right_lb, root_node.depth + 1, vbasis.copy(), cbasis.copy(), selected_var_idx, "Right")
+    left_child = Node(left_var_ub, left_var_lb, root_node.depth + 1, vbasis.copy(), cbasis.copy(), selected_var_idx, "Left")
+    right_child = Node(right_var_ub, right_var_lb, root_node.depth + 1, vbasis.copy(), cbasis.copy(), selected_var_idx, "Right")
 
-    # Add child nodes in heap queue
+    # PUSH TO HEAP
     if isMax:
-        heapq.heappush(heap, (-np.inf, right_child.id, right_child))
-        heapq.heappush(heap, (-np.inf, left_child.id, left_child))
+        heapq.heappush(heap, (-x_obj, right_child.id, right_child))
+        heapq.heappush(heap, (-x_obj, left_child.id, left_child))
     else:
-        heapq.heappush(heap, (np.inf, right_child.id, right_child))
-        heapq.heappush(heap, (np.inf, left_child.id, left_child))
+        heapq.heappush(heap, (x_obj, right_child.id, right_child))
+        heapq.heappush(heap, (x_obj, left_child.id, left_child))
 
-    # Solving sub problems
-    # While the heap queue has nodes, continue solving
-    while(len(heap) != 0):
-        print("\n******************************** NEW NODE BEING EXPLORED ******************************** ")
-
-        # Increment total nodes by 1
+    # ================= Main Loop =================
+    while len(heap) != 0:
+        
+        # Increment total nodes
         nodes += 1
 
-        _, _, current_node = heapq.heappop(heap)
+        # Pop best node
+        parent_obj_bound, _, current_node = heapq.heappop(heap)
+        
+        # Determine the bound of the current node from the heap key
+        current_node_bound = parent_obj_bound if not isMax else -parent_obj_bound
+        
+        # Check Global Convergence
+        if isMax:
+            # If best potential (UB of node) <= Global LB (Best Integer), prune/stop
+            if current_node_bound <= lower_bound + 1e-6:
+                if DEBUG_MODE: print("Global Bound Convergence (All remaining nodes worse than Incumbent). Stopping.")
+                break
+        else:
+            # If best potential (LB of node) >= Global UB (Best Integer), prune/stop
+            if current_node_bound >= upper_bound - 1e-6:
+                if DEBUG_MODE: print("Global Bound Convergence (All remaining nodes worse than Incumbent). Stopping.")
+                break
 
-        # Increase the nodes visited for current depth
-        nodes_per_depth[current_node.depth] -= 1
+        print(f"\n*** Node {nodes} | Depth {current_node.depth} | Bound {current_node_bound:.2f} ***")
 
-        # Warm start solver. Use the vbasis and cbasis that parent node passed to the current one.
+        # Load Node State
         if (len(current_node.vbasis) != 0) and (len(current_node.cbasis) != 0):
-            # FIX: Only load CBasis if constraint counts match (avoids crash when cuts are added)
-            constrs = model.getConstrs()
-            if len(constrs) == len(current_node.cbasis):
-                model.setAttr("CBasis", constrs, current_node.cbasis)
+             constrs = model.getConstrs()
+             if len(constrs) == len(current_node.cbasis):
+                 model.setAttr("CBasis", constrs, current_node.cbasis)
+             model.setAttr("VBasis", model.getVars(), current_node.vbasis)
 
-            # VBasis is usually safe unless variable count changes
-            model.setAttr("VBasis", model.getVars(), current_node.vbasis)
-
-        # Update the state of the model, passing the new lower bounds/upper bounds for the vars.
         model.setAttr("LB", model.getVars(), current_node.lb)
         model.setAttr("UB", model.getVars(), current_node.ub)
         model.update()
 
-        if DEBUG_MODE:
-            debug_print()
-
-        # Optimize the model
         model.optimize()
 
-        # Check if the model was solved to optimality. If not then do not create child nodes.
-        infeasible = False
+        # --- Infeasibility Handling ---
         if model.status != GRB.OPTIMAL:
-            if isMax:
-                infeasible = True
-                x_obj = -np.inf
-            else:
-                infeasible = True
-                x_obj = np.inf
-            for i in range(current_node.depth + 1, len(nodes_per_depth)):
-                nodes_per_depth[i] -= 2 ** (i - current_node.depth)
-
-            # if we reached the final node of a depth, then update the bounds
-            stop, lower_bound, upper_bound = check_depth_completion(
-                current_node.depth, nodes_per_depth, best_bound_per_depth,
-                lower_bound, upper_bound, isMax, DEBUG_MODE
-            )
-            if stop:
-                return solutions, best_sol_idx, solutions_found
-
-        else:
-            # Get the solution (variable assignments)
-            x_candidate = model.getAttr('X', model.getVars())
-
-            # Get the objective value
-            x_obj = model.ObjVal
-
-            # ===========================
-            # DYNAMIC CAPACITY CUTS
-            # ===========================
-            if ENABLE_DYNAMIC_CUTS and current_node.depth > 0 and len(heap) > 0:
-                if num_arcs is not None and arc_list is not None:
-                    cuts = separate_capacity_cuts(
-                        model, vars_list, num_arcs, arc_list, a, q_cluster, Q, M
-                    )
-                    if len(cuts) > 0:
-                        print(f"  [Depth {current_node.depth}] Adding {len(cuts)} capacity cuts...")
-                        for expr, rhs in cuts:
-                            model.addLConstr(expr >= rhs)
-                        model.update()
-                        model.optimize()
-
-                        # Update solution after re-solve
-                        if model.status == GRB.OPTIMAL:
-                            x_candidate = model.getAttr('X', model.getVars())
-                            x_obj = model.ObjVal
-                        else:
-                            # Cuts made problem infeasible
-                            infeasible = True
-                            if isMax:
-                                x_obj = -np.inf
-                            else:
-                                x_obj = np.inf
-                            for i in range(current_node.depth + 1, len(nodes_per_depth)):
-                                nodes_per_depth[i] -= 2 ** (i - current_node.depth)
-                            stop, lower_bound, upper_bound = check_depth_completion(
-                                current_node.depth, nodes_per_depth, best_bound_per_depth,
-                                lower_bound, upper_bound, isMax, DEBUG_MODE
-                            )
-                            if stop:
-                                return solutions, best_sol_idx, solutions_found
-                            if DEBUG_MODE:
-                                debug_print(node=current_node, sol_status="Infeasible after cuts")
-                            continue
-            # ===========================
-
-            # update best bound per depth if a better solution was found
-            if isMax == True and x_obj > best_bound_per_depth[current_node.depth]:
-                best_bound_per_depth[current_node.depth] = x_obj
-            elif isMax == False and x_obj < best_bound_per_depth[current_node.depth]:
-                best_bound_per_depth[current_node.depth] = x_obj
-
-        # If infeasible don't create children (continue searching the next node)
-        if infeasible:
-            if DEBUG_MODE:
-                debug_print(node=current_node, sol_status="Infeasible")
             continue
 
-        # Check if all variables have integer values (from the ones that are supposed to be integers)
+        x_candidate = model.getAttr('X', model.getVars())
+        x_obj = model.ObjVal
+
+        # --- Dynamic Cuts Loop ---
+        if ENABLE_DYNAMIC_CUTS and current_node.depth > 0:
+             if num_arcs is not None and arc_list is not None:
+                cuts = separate_capacity_cuts(model, vars_list, num_arcs, arc_list, a, q_cluster, Q, M)
+                if len(cuts) > 0:
+                    print(f"  [Depth {current_node.depth}] Adding {len(cuts)} cuts...")
+                    for expr, rhs in cuts:
+                        model.addLConstr(expr >= rhs)
+                    model.update()
+                    model.optimize()
+                    
+                    if model.status != GRB.OPTIMAL:
+                        continue 
+                    
+                    x_candidate = model.getAttr('X', model.getVars())
+                    x_obj = model.ObjVal
+
+        # --- Pruning by Bound ---
+        if isMax:
+            if x_obj <= lower_bound + 1e-6:
+                if DEBUG_MODE: print("  Pruned by Bound (Maximization)")
+                continue
+        else:
+            if x_obj >= upper_bound - 1e-6:
+                if DEBUG_MODE: print("  Pruned by Bound (Minimization)")
+                continue
+
+        # --- Integer Check ---
         vars_have_integer_vals = True
+        selected_var_idx = -1
+        min_dist = 10
+        
         for idx, is_int_var in enumerate(integer_var):
             if is_int_var and not is_nearly_integer(x_candidate[idx]):
                 vars_have_integer_vals = False
-                selected_var_idx = idx
-                break
+                dist = abs(x_candidate[idx] - 0.5)
+                if dist < min_dist:
+                    min_dist = dist
+                    selected_var_idx = idx
 
-        # Found feasible solution.
+        # --- Feasible Integer Solution Found ---
         if vars_have_integer_vals:
+            print(f"  INTEGER SOLUTION FOUND: {x_obj}")
+            solutions.append([x_candidate, x_obj, current_node.depth])
+            solutions_found += 1
+            
             if isMax:
-                if lower_bound < x_obj:
+                if x_obj > lower_bound:
                     lower_bound = x_obj
-                if abs(lower_bound - upper_bound) < 1e-6:
-                    solutions.append([x_candidate, x_obj, current_node.depth])
-                    solutions_found += 1
-                    if (abs(x_obj - best_sol_obj) < 1e-6) or solutions_found == 1:
-                        best_sol_obj = x_obj
-                        best_sol_idx = solutions_found - 1
-                    if DEBUG_MODE:
-                        debug_print(node=current_node, x_obj=x_obj, sol_status="Integer/Optimal")
-                    return solutions, best_sol_idx, solutions_found
-
-                solutions.append([x_candidate, x_obj, current_node.depth])
-                solutions_found += 1
-                if (abs(x_obj - best_sol_obj) <= 1e-6) or solutions_found == 1:
                     best_sol_obj = x_obj
                     best_sol_idx = solutions_found - 1
-
-                for i in range(current_node.depth + 1, len(nodes_per_depth)):
-                    nodes_per_depth[i] -= 2 ** (i - current_node.depth)
-
-                stop, lower_bound, upper_bound = check_depth_completion(
-                    current_node.depth, nodes_per_depth, best_bound_per_depth,
-                    lower_bound, upper_bound, isMax, DEBUG_MODE
-                )
-                if stop:
-                    return solutions, best_sol_idx, solutions_found
-
-                if DEBUG_MODE:
-                    debug_print(node=current_node, x_obj=x_obj, sol_status="Integer")
-                continue
-
             else:
-                if upper_bound > x_obj:
+                if x_obj < upper_bound:
                     upper_bound = x_obj
-                if abs(lower_bound - upper_bound) < 1e-6:
-                    solutions.append([x_candidate, x_obj, current_node.depth])
-                    solutions_found += 1
-                    if (abs(x_obj - best_sol_obj) <= 1e-6) or solutions_found >= 1:
-                        best_sol_obj = x_obj
-                        best_sol_idx = solutions_found - 1
-                    if DEBUG_MODE:
-                        debug_print(node=current_node, x_obj=x_obj, sol_status="Integer/Optimal")
-                    return solutions, best_sol_idx, solutions_found
-
-                solutions.append([x_candidate, x_obj, current_node.depth])
-                solutions_found += 1
-                if (abs(x_obj - best_sol_obj) <= 1e-6) or solutions_found >= 1:
                     best_sol_obj = x_obj
                     best_sol_idx = solutions_found - 1
+            
+            continue 
 
-                for i in range(current_node.depth + 1, len(nodes_per_depth)):
-                    nodes_per_depth[i] -= 2 ** (i - current_node.depth)
-
-                stop, lower_bound, upper_bound = check_depth_completion(
-                    current_node.depth, nodes_per_depth, best_bound_per_depth,
-                    lower_bound, upper_bound, isMax, DEBUG_MODE
-                )
-                if stop:
-                    return solutions, best_sol_idx, solutions_found
-
-                if DEBUG_MODE:
-                    debug_print(node=current_node, x_obj=x_obj, sol_status="Integer")
-                continue
-
-        # Prune by bound
-        if isMax:
-            if x_obj < lower_bound:
-                for i in range(current_node.depth + 1, len(nodes_per_depth)):
-                    nodes_per_depth[i] -= 2 ** (i - current_node.depth)
-
-                stop, lower_bound, upper_bound = check_depth_completion(
-                    current_node.depth, nodes_per_depth, best_bound_per_depth,
-                    lower_bound, upper_bound, isMax, DEBUG_MODE
-                )
-                if stop:
-                    return solutions, best_sol_idx, solutions_found
-
-                if DEBUG_MODE:
-                    debug_print(node=current_node, x_obj=x_obj, sol_status="Fractional -- Cut by bound")
-                continue
-
-        else:
-            if x_obj > upper_bound:
-                for i in range(current_node.depth + 1, len(nodes_per_depth)):
-                    nodes_per_depth[i] -= 2 ** (i - current_node.depth)
-
-                stop, lower_bound, upper_bound = check_depth_completion(
-                    current_node.depth, nodes_per_depth, best_bound_per_depth,
-                    lower_bound, upper_bound, isMax, DEBUG_MODE
-                )
-                if stop:
-                    return solutions, best_sol_idx, solutions_found
-
-                if DEBUG_MODE:
-                    debug_print(node=current_node, x_obj=x_obj, sol_status="Fractional -- Cut by bound")
-                continue
-
-        if DEBUG_MODE:
-            debug_print(node=current_node, x_obj=x_obj, sol_status="Fractional")
-
-        # Warm start simplex
+        # --- Branching ---
         if WARM_START:
             vbasis = model.getAttr("VBasis", model.getVars())
             cbasis = model.getAttr("CBasis", model.getConstrs())
 
-        # Create lower bounds and upper bounds for child nodes
-        left_lb = np.copy(current_node.lb)
-        left_ub = np.copy(current_node.ub)
-        right_lb = np.copy(current_node.lb)
-        right_ub = np.copy(current_node.ub)
+        left_var_lb = np.copy(current_node.lb)
+        left_var_ub = np.copy(current_node.ub)
+        right_var_lb = np.copy(current_node.lb)
+        right_var_ub = np.copy(current_node.ub)
 
-        # Create left and right branches
-        left_ub[selected_var_idx] = np.floor(x_candidate[selected_var_idx])
-        right_lb[selected_var_idx] = np.ceil(x_candidate[selected_var_idx])
+        left_var_ub[selected_var_idx] = np.floor(x_candidate[selected_var_idx])
+        right_var_lb[selected_var_idx] = np.ceil(x_candidate[selected_var_idx])
 
-        # Create child nodes
-        left_child = Node(left_ub, left_lb, current_node.depth + 1, vbasis.copy(), cbasis.copy(), selected_var_idx, "Left")
-        right_child = Node(right_ub, right_lb, current_node.depth + 1, vbasis.copy(), cbasis.copy(), selected_var_idx, "Right")
+        left_child = Node(left_var_ub, left_var_lb, current_node.depth + 1, vbasis.copy(), cbasis.copy(), selected_var_idx, "Left")
+        right_child = Node(right_var_ub, right_var_lb, current_node.depth + 1, vbasis.copy(), cbasis.copy(), selected_var_idx, "Right")
 
-        # Add child nodes in heap queue
         if isMax:
-            heapq.heappush(heap, (-np.inf, right_child.id, right_child))
-            heapq.heappush(heap, (-np.inf, left_child.id, left_child))
+            heapq.heappush(heap, (-x_obj, right_child.id, right_child))
+            heapq.heappush(heap, (-x_obj, left_child.id, left_child))
         else:
-            heapq.heappush(heap, (np.inf, right_child.id, right_child))
-            heapq.heappush(heap, (np.inf, left_child.id, left_child))
+            heapq.heappush(heap, (x_obj, right_child.id, right_child))
+            heapq.heappush(heap, (x_obj, left_child.id, left_child))
 
     return solutions, best_sol_idx, solutions_found
