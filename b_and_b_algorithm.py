@@ -37,7 +37,7 @@ class Node:
         self.cbasis = cbasis
         self.branching_var = branching_var
         self.label = label
-        self.id = id(self)
+        #self.id = id(self)
 
 # A simple function to print debugging info
 def debug_print(node=None, x_obj=None, sol_status=None):
@@ -62,7 +62,7 @@ def separate_capacity_cuts(model, vars_list, num_arcs, arc_list, a, q_cluster, Q
     Separates capacity/subtour cuts over small cluster subsets.
     Returns a list of violated cuts (gp.LinExpr >= rhs).
     """
-    # FIX: Retrieve values safely (vars_list is a tupledict)
+    # Retrieve values safely (vars_list is a tupledict)
     all_vals = model.getAttr('X', vars_list)
     # Access by index since your keys are 0..num_vars-1
     x_val = [all_vals[i] for i in range(num_arcs)]
@@ -156,6 +156,8 @@ def branch_and_bound(model, ub, lb, integer_var, best_bound_per_depth, nodes_per
     else:
         best_sol_obj = np.inf
 
+    node_creation_counter = 0
+
     # Create root node
     # Note: ub and lb here are expected to be LISTS (variable bounds vectors)
     root_node = Node(ub, lb, depth, vbasis, cbasis, -1, "root")
@@ -225,13 +227,20 @@ def branch_and_bound(model, ub, lb, integer_var, best_bound_per_depth, nodes_per
     left_child = Node(left_var_ub, left_var_lb, root_node.depth + 1, vbasis.copy(), cbasis.copy(), selected_var_idx, "Left")
     right_child = Node(right_var_ub, right_var_lb, root_node.depth + 1, vbasis.copy(), cbasis.copy(), selected_var_idx, "Right")
 
+    # using counter for node exploring
+    node_creation_counter += 1
+    right_id = node_creation_counter
+    
+    node_creation_counter += 1
+    left_id = node_creation_counter
+
     # PUSH TO HEAP
     if isMax:
-        heapq.heappush(heap, (-x_obj, right_child.id, right_child))
-        heapq.heappush(heap, (-x_obj, left_child.id, left_child))
+        heapq.heappush(heap, (-x_obj, right_id, right_child))
+        heapq.heappush(heap, (-x_obj, left_id, left_child))
     else:
-        heapq.heappush(heap, (x_obj, right_child.id, right_child))
-        heapq.heappush(heap, (x_obj, left_child.id, left_child))
+        heapq.heappush(heap, (x_obj, right_id, right_child))
+        heapq.heappush(heap, (x_obj, left_id, left_child))
 
     # ================= Main Loop =================
     while len(heap) != 0:
@@ -244,6 +253,12 @@ def branch_and_bound(model, ub, lb, integer_var, best_bound_per_depth, nodes_per
         
         # Determine the bound of the current node from the heap key
         current_node_bound = parent_obj_bound if not isMax else -parent_obj_bound
+
+        # Global bounds update
+        if isMax:
+            upper_bound = current_node_bound
+        else:
+            lower_bound = current_node_bound
         
         # Check Global Convergence
         if isMax:
@@ -252,8 +267,8 @@ def branch_and_bound(model, ub, lb, integer_var, best_bound_per_depth, nodes_per
                 if DEBUG_MODE: print("Global Bound Convergence (All remaining nodes worse than Incumbent). Stopping.")
                 break
         else:
-            # If best potential (LB of node) >= Global UB (Best Integer), prune/stop
-            if current_node_bound >= upper_bound - 1e-6:
+            # If best potential (LB of node) >= Global UB -1(Best Integer), prune/stop
+            if current_node_bound >= upper_bound - (1-1e-6):
                 if DEBUG_MODE: print("Global Bound Convergence (All remaining nodes worse than Incumbent). Stopping.")
                 break
 
@@ -271,6 +286,11 @@ def branch_and_bound(model, ub, lb, integer_var, best_bound_per_depth, nodes_per
         model.update()
 
         model.optimize()
+
+        if DEBUG_MODE:
+            x_obj_debug = model.ObjVal if model.status == GRB.OPTIMAL else None
+            status_debug = "Optimal" if model.status == GRB.OPTIMAL else "Infeasible/Other"
+            debug_print(node=current_node, x_obj=x_obj_debug, sol_status=status_debug)
 
         # --- Infeasibility Handling ---
         if model.status != GRB.OPTIMAL:
@@ -354,11 +374,18 @@ def branch_and_bound(model, ub, lb, integer_var, best_bound_per_depth, nodes_per
         left_child = Node(left_var_ub, left_var_lb, current_node.depth + 1, vbasis.copy(), cbasis.copy(), selected_var_idx, "Left")
         right_child = Node(right_var_ub, right_var_lb, current_node.depth + 1, vbasis.copy(), cbasis.copy(), selected_var_idx, "Right")
 
+        # increase the counter for the new children
+        node_creation_counter += 1
+        right_uniq_id = node_creation_counter
+        
+        node_creation_counter += 1
+        left_uniq_id = node_creation_counter
+
         if isMax:
-            heapq.heappush(heap, (-x_obj, right_child.id, right_child))
-            heapq.heappush(heap, (-x_obj, left_child.id, left_child))
+            heapq.heappush(heap, (-x_obj, right_uniq_id, right_child))
+            heapq.heappush(heap, (-x_obj, left_uniq_id, left_child))
         else:
-            heapq.heappush(heap, (x_obj, right_child.id, right_child))
-            heapq.heappush(heap, (x_obj, left_child.id, left_child))
+            heapq.heappush(heap, (x_obj, right_uniq_id, right_child))
+            heapq.heappush(heap, (x_obj, left_uniq_id, left_child))
 
     return solutions, best_sol_idx, solutions_found
