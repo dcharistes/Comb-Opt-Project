@@ -226,7 +226,7 @@ def build_gvrp_model(N, K, Q, M, q_cluster, a, arc_list, cost_param, depot_node_
 # solve the generator's random instances
 if __name__ == "__main__":
     # Read instance from generator output
-    instance_filename = "./15_120_10/0.txt"
+    instance_filename = "./problems/45_80_9/0.txt"
 
     try:
         N, K, Q, M, q_cluster, a, arc_list, cost_param, depot_node_id, cluster_nodes = read_data_gvrp(instance_filename)
