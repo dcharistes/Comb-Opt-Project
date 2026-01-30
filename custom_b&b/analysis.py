@@ -6,7 +6,7 @@ import heuristics as hr
 import time
 
 # 1. Load Data
-filename = "./15_80_9/0.txt"
+filename = "./15_120_10/0.txt"
 
 # Load model for Custom B&B
 model_bb, ub, lb, integer_var, num_vars, c, arc_list, arc_to_idx, vars_list = pg.gvrp_model_gurobi(filename)
@@ -72,7 +72,7 @@ bb.isMax = False
 
 # Use VNS bound if found, otherwise infinite
 if vns_obj != np.inf:
-    bb.upper_bound = vns_obj + 1e-6
+    bb.upper_bound = best_cost + 1
 else:
     bb.upper_bound = np.inf
 

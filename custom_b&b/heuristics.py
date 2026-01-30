@@ -21,45 +21,68 @@ def getAssignmentCost(routes, cost_matrix, depot_id):
 
     return total_cost
 
-def check_feasibility(routes, Q, q_cluster, a, M):
+def check_feasibility(routes, Q, q_cluster, a, M, K, cost_matrix, depot_id):
     """
-    Checks if the GVRP solution is feasible (Capacity + Cluster Constraints).
+    Strictly checks feasibility against Gurobi formulation constraints:
+    1. Vehicle Count (== K)
+    2. Edge Existence (Arc must exist)
+    3. Capacity (<= Q)
+    4. Cluster Coverage (Exactly 1 visit per cluster)
     """
 
-    # # check vehicle count
-    # if K is not None:
-    #     num_vehicles = len([r for r in routes if len(r) > 0])
-    #     # If your problem is "Exactly K":
-    #     if num_vehicles != K:
-    #         return False
-    #     # If your problem is "At most K":
-    #     # if num_vehicles > K:
-    #     #    return False
+    # 1. Check Vehicle Count (Constraint C3)
+    # Count non-empty routes
+    active_routes = [r for r in routes if len(r) > 0]
+    if len(active_routes) != K:
+        # Gurobi model has equality constraint: sum(depot_out) == K
+        return False
 
-    # # check if edges exist
-    # for i in range(len(route)-1):
-    #     u, v = route[i], route[i+1]
-    #     if (u,v) not in cost_matrix and (u,v) not in arc_list_set:
-    #         return False # Impossible path
+    # Track visited clusters
+    visited_clusters = set()
 
+    for route in active_routes:
+        load = 0
 
-    # capacity check
-    for route in routes:
-        load = sum(q_cluster[a[node]] for node in route)
+        # Verify Depot -> First Node Edge
+        first_node = route[0]
+        if (depot_id, first_node) not in cost_matrix:
+            return False
+
+        # Verify Last Node -> Depot Edge
+        last_node = route[-1]
+        if (last_node, depot_id) not in cost_matrix:
+            return False
+
+        for i in range(len(route)):
+            u = route[i]
+
+            # 2. Check Node Validity (Constraint C1/C2)
+            # Ensure we aren't visiting the depot in the middle of a route
+            if u == depot_id:
+                return False
+
+            # Update Load
+            clust = a[u]
+            load += q_cluster[clust]
+
+            # Check Cluster Coverage (Constraint C1/C2)
+            if clust in visited_clusters:
+                return False # Visited same cluster twice
+            visited_clusters.add(clust)
+
+            # Check Edge Existence (u -> v)
+            if i < len(route) - 1:
+                v = route[i+1]
+                if (u, v) not in cost_matrix:
+                    return False
+
+        # 3. Check Capacity (Constraint C6)
         if load > Q:
             return False
 
-    # all clusters visited exactly once
-    visited_clusters = set()
-    for route in routes:
-        for node in route:
-            clust = a[node]
-            if clust in visited_clusters:
-                return False # twice
-            visited_clusters.add(clust)
-
+    # 4. Check All Clusters Visited (Constraint C1/C2)
     if len(visited_clusters) != M:
-        return False # some are not visited
+        return False
 
     return True
 
@@ -105,7 +128,7 @@ def myopic_heuristic(N, K, Q, M, q_cluster, a, cost_matrix, depot_id, cluster_no
         routes.append(route)
 
     # check status
-    status = check_feasibility(routes, Q, q_cluster, a, M)
+    status = check_feasibility(routes, Q, q_cluster, a, M, K, cost_matrix, depot_id)
     total_cost = getAssignmentCost(routes, cost_matrix, depot_id)
 
     if status:
@@ -139,7 +162,7 @@ def VNS_algorithm(kmax, max_iterations, solution_routes, solution_cost, N, K, Q,
             #  iterate all clusters to re-optimize their positions
             all_clusters_neighborhood = list(range(1, M + 1))
 
-            new_sol, new_sol_cost = local_search_vns(all_clusters_neighborhood, new_sol, N, Q, M, q_cluster, a, cost_matrix, depot_id, cluster_nodes)
+            new_sol, new_sol_cost = local_search_vns(all_clusters_neighborhood, new_sol, N, Q, M, K, q_cluster, a, cost_matrix, depot_id, cluster_nodes)
 
             # accpted
             if new_sol_cost < current_sol_cost - 1e-6:
@@ -198,7 +221,7 @@ def shaking(solution, k, N, Q, q_cluster, a, cost_matrix, depot_id):
     cost = getAssignmentCost(temp_routes, cost_matrix, depot_id)
     return temp_routes, cost
 
-def local_search_vns(neighborhood, solution, N, Q, M, q_cluster, a, cost_matrix, depot_id, cluster_nodes):
+def local_search_vns(neighborhood, solution, N, Q, M, K, q_cluster, a, cost_matrix, depot_id, cluster_nodes):
     """
     Iterates through the neighborhood (list of clusters) and tries to find the best
     assignment/position for each cluster using find_best_val.
@@ -207,12 +230,12 @@ def local_search_vns(neighborhood, solution, N, Q, M, q_cluster, a, cost_matrix,
 
     for clust_idx in neighborhood:
         # Pass the current state (new_sol) to find_best_val to improve it for one cluster
-        new_sol = find_best_val(clust_idx, new_sol, N, Q, M, q_cluster, a, cost_matrix, depot_id, cluster_nodes)
+        new_sol = find_best_val(clust_idx, new_sol, N, Q, M, K, q_cluster, a, cost_matrix, depot_id, cluster_nodes)
 
     sol_cost = getAssignmentCost(new_sol, cost_matrix, depot_id)
     return new_sol, sol_cost
 
-def find_best_val(clust_idx, solution, N, Q, M, q_cluster, a, cost_matrix, depot_id, cluster_nodes):
+def find_best_val(clust_idx, solution, N, Q, M, K, q_cluster, a, cost_matrix, depot_id, cluster_nodes):
     """
     Finds the best position (route & index) and best node for the given cluster 'clust_idx'.
     """
@@ -255,7 +278,7 @@ def find_best_val(clust_idx, solution, N, Q, M, q_cluster, a, cost_matrix, depot
                 route.insert(i, candidate_node)
 
                 # check feasibility from gvrp_model constraints
-                if check_feasibility(temp_sol, Q, q_cluster, a, M):
+                if check_feasibility(temp_sol, Q, q_cluster, a, M, K, cost_matrix, depot_id):
                     # Calculate Cost
                     cost = getAssignmentCost(temp_sol, cost_matrix, depot_id)
 

@@ -1,0 +1,5 @@
+pr_num,time_bnb,time_gurobi,nodes_expl_bnb,nodes_expl_gurobi
+1,205.1056,x,471,1
+2,207.9437,1.22,665,1
+3,554.5914,5.55,1109,286
+4,2067.1869,4.09,2275,154
