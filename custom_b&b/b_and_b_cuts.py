@@ -42,7 +42,7 @@ class Node:
 # A simple function to print debugging info
 def debug_print(node=None, x_obj=None, sol_status=None):
     print("\n\n----------------- DEBUG OUTPUT -----------------\n\n")
-    print(f"UB:{upper_bound}")
+    print(f"UB:{upper_bound:.1f}")
     print(f"LB:{lower_bound}")
     if node is not None:
         print(f"Branching Var: {node.branching_var}")
