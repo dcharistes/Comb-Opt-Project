@@ -10,23 +10,37 @@ def create_diagrams(csv_file):
         return
 
     # 2. Data Cleaning
-    # Convert columns to numeric, turning errors (like 'x' or strings) into NaN (Not a Number)
-    # This prevents the script from crashing on incomplete data entries
-    cols_to_convert = ['time_bnb', 'time_gurobi', 'nodes_expl_bnb', 'nodes_expl_gurobi']
+    # Strip whitespace from column names (e.g., ' time_bnb ' -> 'time_bnb')
+    df.columns = df.columns.str.strip()
+
+    # Define the columns we want to convert
+    cols_to_convert = [
+        'time_bnb', 'time_bnb_no_cuts', 'time_gurobi',
+        'nodes_expl_bnb', 'nodes_expl_bnb_no_cuts', 'nodes_expl_gurobi'
+    ]
+
+    # Convert to numeric, turning errors (like 'x' or strings) into NaN
     for col in cols_to_convert:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce')
+        else:
+            print(f"Warning: Column '{col}' not found in CSV.")
 
     # 3. Create First Diagram: Time Comparison
     plt.figure(figsize=(10, 6))
 
-    # Plot BnB Time
+    # Plot Custom BnB (Cuts)
     plt.plot(df['pr_num'], df['time_bnb'],
-             marker='o', linestyle='-', color='blue', label='Custom BnB')
+             marker='o', linestyle='-', color='green', label='Custom BnB (Cuts)')
 
-    # Plot Gurobi Time
+    # Plot Simple BnB (No Cuts) - NEW
+    if 'time_bnb_no_cuts' in df.columns:
+        plt.plot(df['pr_num'], df['time_bnb_no_cuts'],
+                 marker='^', linestyle='--', color='magenta', label='Simple BnB (No Cuts)')
+
+    # Plot Gurobi
     plt.plot(df['pr_num'], df['time_gurobi'],
-             marker='s', linestyle='--', color='red', label='Gurobi')
+             marker='s', linestyle='-.', color='orange', label='Gurobi')
 
     plt.xlabel('Problem Number')
     plt.ylabel('Time (seconds)')
@@ -34,25 +48,29 @@ def create_diagrams(csv_file):
     plt.legend()
     plt.grid(True)
 
-    # Ensure x-axis only shows integer problem numbers
     if not df['pr_num'].empty:
         plt.xticks(df['pr_num'])
 
     plt.tight_layout()
     plt.savefig('./results/time_comparison.png')
     print("Created 'time_comparison.png'")
-    plt.close() # Close figure to free memory
+    plt.close()
 
     # 4. Create Second Diagram: Nodes Explored Comparison
     plt.figure(figsize=(10, 6))
 
-    # Plot BnB Nodes
+    # Plot Custom BnB (Cuts)
     plt.plot(df['pr_num'], df['nodes_expl_bnb'],
-             marker='o', linestyle='-', color='green', label='Custom BnB')
+             marker='o', linestyle='-', color='green', label='Custom BnB (Cuts)')
 
-    # Plot Gurobi Nodes
+    # Plot Simple BnB (No Cuts) - NEW
+    if 'nodes_expl_bnb_no_cuts' in df.columns:
+        plt.plot(df['pr_num'], df['nodes_expl_bnb_no_cuts'],
+                 marker='^', linestyle='--', color='magenta', label='Simple BnB (No Cuts)')
+
+    # Plot Gurobi
     plt.plot(df['pr_num'], df['nodes_expl_gurobi'],
-             marker='s', linestyle='--', color='orange', label='Gurobi')
+             marker='s', linestyle='-.', color='orange', label='Gurobi')
 
     plt.xlabel('Problem Number')
     plt.ylabel('Nodes Explored')
@@ -64,7 +82,7 @@ def create_diagrams(csv_file):
         plt.xticks(df['pr_num'])
 
     plt.tight_layout()
-    plt.savefig('./results/nodes_comparison.png')
+    plt.savefig('./results/renodes_comparison.png')
     print("Created 'nodes_comparison.png'")
     plt.close()
 

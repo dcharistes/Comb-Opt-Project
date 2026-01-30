@@ -6,7 +6,7 @@ import heuristics as hr
 import time
 
 # 1. Load Data
-filename = "./problems/12_100_11/0.txt"
+filename = "./problems/45_80_9/0.txt"
 
 # Load model for Custom B&B
 model_bb, ub, lb, integer_var, num_vars, c, arc_list, arc_to_idx, vars_list = pg.gvrp_model_gurobi(filename)
