@@ -39,9 +39,11 @@ ece02031@uowm.gr}
 }
 
 \maketitle
+\thispagestyle{plain}
+\pagestyle{plain}
 
 \begin{abstract}
-The Generalized Vehicle Routing problem investigated in this project is a Single Commodity Formulation [citation]. This is a study on model optimization for the Single Commodity Formulation problem proposing a custom Branch and Cut algorithm, as well as heuristics. The final architecture of the custom Branch and Cut algorithm is then compared to the simple Branch and Bound algorithm and the state-of-the-art Gurobi solver for a computational analysis on execution time and nodes traversed in increasing problem order.
+The Generalized Vehicle Routing problem investigated in this project is the Single Commodity Formulation \cite{bektas2011}. This is a study on model optimization for this problem proposing a custom Branch and Cut algorithm, as well as heuristics. The final architecture of the custom Branch and Cut algorithm is then compared to the simple Branch and Bound algorithm and the state-of-the-art Gurobi solver for a computational analysis on execution time and nodes traversed in increasing problem order.
 \end{abstract}
 
 % ''these titles are relative, can be seen as notes for the text to be written. if not appropriate can be re-arranged!''
@@ -53,10 +55,10 @@ Generalized Vehicle Routing Problems (GVRP) are a set of challenging optimizatio
 
 The GVRP is a generalization of the Capacitated Vehicle Routing Problem (CVRP) which lies at the heart of distribution management. The literature on the CVRP is quite rich and we refer the reader to Cordeau and Laporte (2006), Cordeau et al. (2007), Laporte (2007) for overviews of the recent progress on this problem.
 
-In this project, we are concerned with the Generalized Vehicle Routing Problem (GVRP) that consists of finding a set of routes for a number of vehicles with limited capacities on a graph with the vertices (customers) partitioned into clusters. Customers are assigned with given demands -through a problem instance generation algorithm-. The total cost of the travel has to be minimized and all demands to be met. 
+In this project, the GVR problem we are concerned with, consists of finding a set of routes for a number of vehicles with limited capacities on a graph with the vertices (customers) partitioned into clusters. Customers are assigned with given demands -through a problem instance generation algorithm-. The total cost of the travel has to be minimized and all demands to be met. 
 
 \subsection{Project Objectives and Outcomes}
-The project's objective is to examine various techniques on heuristic methods, cutting planes and different formulations to find what works best in Generalized Vehicle Routing Problems. To do so the problem will be modeled and optimized in Pyomo to get a solution reference and a computational footprint from the Gurobi solver and then dive deeper into the actual solving process. The problem will be remodeled in gurobiPy in order to import the lower and upper bounds in the custom branch and bound algorithm that will be implemented. Then the custom optimization process using efficient data structures, heuristics and cutting planes will take place. The computational reference to this optimization will be the simple branch and bound algorithm. 
+The project's objective is to examine various techniques on heuristic methods, cutting planes to find what works best in Generalized Vehicle Routing Problems. To do so the problem will be modeled and optimized in Pyomo to get a solution reference and a computational footprint from the Gurobi solver, and then dive deeper into the actual solving process. The problem will be remodeled in gurobiPy in order to extract and import the appropriate information to the custom branch and cut algorithm that will be implemented. Then the optimization process using efficient data structures, heuristics and cutting planes will take place. The computational reference to this optimization will be the simple branch and bound algorithm. 
 
 \section{Literature Review}
 \label{sec:lit-review}
@@ -120,10 +122,10 @@ The first process is the selection of the node (customer) to be visited for each
 The formulation of the GVRP that will be examined and optimized in this project is the Single Commodity Formulation \cite{bektas2011} proposed by Gavish and Graves (1978). The problem is modeled as a pickup situation, in order to examine the strengthened capacity bound that will be further discussed in  I.C. This formulation is set upon cluster demands but with each node (customer) of the cluster having a distinct cost. All vehicles have the same capacity Q and the demand of any cluster is at most Q. The exact problem instance generation on number of customers, clusters, vehicles and capacity will be discussed in section \ref{sec:pr-generator}.
 
 \subsection{Mathematical Formulation}
-The mathematical formulation is based on a directed graph and uses a binary variable $x_{ij}$ defined for every $(i, j) \in A$, which equals $1$ if arc $(i, j)\in A$ where A is the set of arcs, is traversed by a vehicle, and $0$ otherwise. A continuous variable $f_{ij} \ge 0, \forall (i, j) \in A$ indicates the amount that the vehicle carries from vertex $i$ to vertex $j$. Its definition is crucial for the commodity balance and to constraint the demand serving. In this formulation it is very important to define the arcs that are entering and leaving a cluster. For that purpose the notation $δ(S)$ is defined as $δ(S)= {{(i,j)\in A} ; (i\in S \And j\notin S) \vee (i\notin S \And j\in S)} $. It corresponds to the set of arcs entering or leaving the subset S, whereas in the case of the problem this is for every cluster $C_k$ in the set of clusters M, except the cluster 0 of the depot. The formulation is presented above.
+The mathematical formulation uses a binary variable $x_{ij}$ defined for every $(i, j) \in A$, which equals $1$ if arc $(i, j)\in A$ where A is the set of arcs, is traversed by a vehicle, and $0$ otherwise. A continuous variable $f_{ij} \ge 0, \forall (i, j) \in A$ indicates the amount that the vehicle carries from vertex $i$ to vertex $j$. Its definition is crucial for the commodity balance and to constraint the demand serving. In this formulation it is very important to define the arcs that are entering and leaving a cluster. For that purpose the notation $δ(S)$ is defined as $δ(S)= {{(i,j)\in A} ; (i\in S \And j\notin S) \vee (i\notin S \And j\in S)} $. It corresponds to the set of arcs entering or leaving the subset S, whereas in the case of the problem this is for every cluster $C_k$ in the set of clusters M, except the cluster 0 of the depot. The formulation is presented above.
 
 \subsection{Variables and Constraints Analysis}
-In the formulation below (1), is the objective function corresponding to the minimization problem. The $c_{ij}$ is the cost of the arc $(i,j)$ and it is counted only if the variable $x_{ij}$ arc is 1 thus traversed. The purpose of the solver is to minimize that sum as close possible to the relaxed problem optimal solution objective value (will be discussed later). 
+In the formulation above (1), is the objective function corresponding to the minimization problem. The $c_{ij}$ is the cost of the arc $(i,j)$ and it is counted only if the variable $x_{ij}$ arc is 1 thus traversed. The purpose of the solver is to minimize that sum as close possible to the relaxed problem optimal solution objective value (will be discussed later). 
 
 Based on the analysis of the notation $δ(S)$, constraints (2) and (3) define the requirement of the vehicle to visit a cluster $C_k$ exactly one time, thus having one entering arc (2) and a one leaving arc (3). 
 
@@ -133,7 +135,7 @@ Constraint (6) imposes the conservation of the physical route at the level of ea
 
 It might be assumed that Constraints (2) and (3) are sufficient. However, without Constraint (6), the model allows for a physical impossibility known as "Inter-Cluster Teleportation". Constraint (6) prevents this by forcing the specific node that receives the vehicle to be the exact same node that sends the vehicle to the next destination.
 
-Constraint (7) serves as the commodity flow balance equation, effectively linking the binary routing variables ($x$) with the continuous cargo variables ($f$). In this pickup scenario, it mandates that the load leaving a customer node must exceed the load entering it by exactly the amount picked up. This constraint is non-redundant to the degree constraints (2) and (3); while the latter ensure that clusters are entered and exited, they fail to prevent isolated subtours (disconnected loops such as $C_1 \to C_2 \to C_1$). By enforcing flow accumulation from a source (the depot) to a sink, Constraint (7) renders such isolated loops mathematically impossible. Furthermore, it works in tandem with Constraint (8) to explicitly couple routing decisions with capacity limits, ensuring the vehicle's accumulated load never exceeds $Q$.
+Constraint (7) serves as the commodity flow balance equation, linking the binary routing variables ($x$) with the continuous flow variables ($f$). In this pickup scenario, it mandates that the load leaving a customer node must exceed the load entering it by exactly the amount picked up. This constraint is non-redundant to the degree constraints (2) and (3); while the latter ensure that clusters are entered and exited, they fail to prevent isolated subtours (disconnected loops such as $C_1 \to C_2 \to C_1$). By enforcing flow accumulation from a source (the depot) to a sink, Constraint (7) renders such isolated loops mathematically impossible. Furthermore, it works in parallel with Constraint (8) to couple routing decisions with capacity limits, ensuring the vehicle's accumulated load never exceeds $Q$.
 
 While Constraint (7) determines the flow for customer nodes, the depot (Node 0), is excluded from this flow balance formulation. It requires a distinct formulation to satisfy the conservation of mass across the entire network. For any customer node $i \in V \setminus \{0\}$, the vehicle arrives with a specific load, collects the demand $q_{\alpha(i)}$, and departs. This relationship is expressed as:
 \begin{equation}
@@ -156,13 +158,15 @@ To resolve this, the flow balance equation for the depot must account for the ab
 \begin{equation}
     \sum_{i \in V \setminus \{0\}} \underbrace{(f(\delta^+(i)) - f(\delta^-(i)))}_{+ \text{Total Demand}} + \underbrace{(f(\delta^+(0)) - f(\delta^-(0)))}_{\text{Depot Net Flow}} = 0
 \end{equation}
-To balance the positive flow generated by the customers, the depot must exhibit a negative net flow exactly equal to the total collected demand:
+To balance the positive flow generated by the customers, the depot must exhibit a negative net flow equal to the total collected demand:
 \begin{equation}
     f(\delta^+(0)) - f(\delta^-(0)) = - \sum_{k \in M} q_k \label{eq:13}
 \end{equation}
 Given that $f(\delta^+(0)) = 0$, this simplifies to $f(\delta^-(0)) = \sum q_k$, correctly ensuring that the vehicle returns to the depot fully loaded. Equation \ref{eq:13} will be added as a constraint in the model.
 
-Constraint (8) is the Strengthened Validity Inequality. It physically links the routing and flow variables, and it "tightens" the mathematical model to help the solver run faster. The lower bound represents the minimum load condition for the pickup problem. If a vehicle traverses arc (i,j), it implies the vehicle has just serviced (visited) node i. Since this is a Pickup problem, the vehicle must have picked up the demand $q_{α(i)}$ at node i. Therefore, the load on the vehicle immediately after leaving node i ($f_{ij}$) must be at least equal to that pickup amount. The upper bound represents the Strengthened Capacity Limit relative to the vehicle. If the vehicle leaves node i carrying a load, and it just used up $q_α(i)$ of its "virtual space", we can mathematically tighten the upper bound. This strengthened bound is theoretically better than the simple $0\le f_{ij}\le Q$ because it tightens the LP relaxation solution making the resolution to complete faster and also prunes a tree earlier in the process.
+Constraint (8) is the Strengthened Validity Inequality. It physically links the routing and flow variables, and it "tightens" the mathematical model to help the solver run faster. 
+
+The lower bound represents the minimum load condition for the pickup problem. If a vehicle traverses arc $(i,j)$, it implies the vehicle has just visited node i. Since this is a Pickup problem, the vehicle must have picked up the demand $q_{α(i)}$ at node i. Therefore, the load on the vehicle immediately after leaving node i ($f_{ij}$) must be at least equal to that pickup amount. The upper bound represents the Strengthened Capacity Limit relative to the vehicle. If the vehicle leaves node i carrying a load, and it just used up $q_α(i)$ of its space, we can mathematically tighten the upper bound to be $Q-q_{a(i)}$. This strengthened bound is better than the simple $0\le f_{ij}\le Q$ because it tightens the LP relaxation solution and also prunes a tree earlier in the process.
 
 \section{Problem Instance Generator}
 \label{sec:pr-generator}
@@ -343,9 +347,9 @@ It explicitly checks for the cluster ID 0 to locate and store the \textit{depot\
 After detecting the "Arcs:" keyword, the function parses the network topology. It translates the raw start/end coordinates $(x_1, y_1) \to (x_2, y_2)$ into the integer indices established in the previous phase. The valid connections and their costs are stored in \textit{arc\_list} and \textit{cost\_param}, respectively.
 
 \subsection{Integration with Model Construction}
-The output of \textit{read\_data\_gvrp} is engineered to map directly to the arguments of \textit{build\_gvrp\_model}, effectively decoupling data parsing from mathematical modeling.
+The output of \textit{read\_data\_gvrp} is engineered to map directly to the arguments of \textit{build\_gvrp\_model}, decoupling data parsing from mathematical modeling.
 
-The function abstracts away the spatial geometry of the grid. By converting $(x, y)$ coordinates to simple integers, it allows \textit{build\_gvrp\_model} to define the set $V$ as a simple range, simplifying the indexing of variables $x_{ij}$ and $f_{ij}$.
+The function abstracts away the orthogonal geometry of the grid. By converting $(x, y)$ coordinates to simple integers, it allows \textit{build\_gvrp\_model} to define the set $V$ as a simple range, simplifying the indexing of variables $x_{ij}$ and $f_{ij}$.
 
 The constraints \textit{visit\_in} and \textit{visit\_out} require summing variables over all nodes within a specific cluster. The \textit{read\_data\_gvrp} pre-calculates this grouping in the \textit{cluster\_nodes} dictionary. This allows the model to iterate directly over pre-grouped lists rather than searching the entire node set for cluster members during constraint generation.
 
@@ -379,7 +383,6 @@ By setting them to continuous, we restrict Gurobi to solving the LP Relaxation (
 Since the variables are defined as continuous, the solver may return fractional values (e.g., $x_{ij} = 0.6$). The $integer\_var$ is set to true for arc variables and false for flow as we want to branch only on arc variables.
 
 In the GVR problem we are solving the customer demands ($q_k$) are generated as integers. Since the flow is simply the accumulation of these integer demands along a valid path, if $x_{ij} \in \{0, 1\}$, then $f_{ij}$ is guaranteed to be an integer value. 
-Specifically, for any customer node $i$ visited by the vehicle, the flow conservation constraint is given by equation \ref{eq:20}
 
 For any customer node $i$ visited by the vehicle, the flow conservation constraint is given by equation \ref{eq:20}.
 Since the path is simple and fixed, there is exactly one incoming arc $(u, i)$ and one outgoing arc $(i, v)$. The equation simplifies to:
@@ -584,11 +587,11 @@ The solution is extracted by filling one vehicle route at a time until all clust
     \item \textbf{Termination of Route:} The above steps are repeated (except the first) until no remaining cluster satisfies the capacity constraint. The vehicle returns to depot, and the next route begins.
 \end{enumerate}
 
-This method effectively handles the two-layered complexity of the GVRP simultaneously: it decides which cluster to visit next \textit{and} exactly which node within that cluster to visit, based purely on proximity. While computationally fast, the lack of look-ahead often results in the final few clusters being geographically isolated, necessitating the subsequent improvement phase.
+This method effectively handles the two-layered complexity of the GVRP simultaneously: it decides which cluster to visit next \textit{and} exactly which node within that cluster to visit, based purely on proximity. While computationally fast, the lack of look-ahead often results in the final few clusters being geographically isolated, making the implementation of an improvement phase mandatory.
 
 \subsection{Metaheuristic: Variable Neighborhood Search}
 
-Following the derivation of an initial feasible solution with the myopic heuristic, a Variable Neighborhood Search (VNS) metaheuristic is implemented to refine the solution and improve the percentage equation \ref{eq:28} in the branch and bound algorithm. The VNS algorithm explores utilizing two processes: the stochastic shaking, and the deterministic improvement with the local search to escape local optimals.
+Following the derivation of an initial feasible solution with the myopic heuristic, a Variable Neighborhood Search (VNS) metaheuristic is implemented to refine the solution and improve the percentage equation \ref{eq:28} in the branch and bound algorithm. The VNS algorithm explores utilizing two processes: the stochastic shaking, and the deterministic improvement with the local search to escape local optima.
 
 The algorithm is constrained by two control loops: the outer loop constrained by a maximum number of global iterations, and the inner loop controlled by the neighborhood intensity $k$. These decision variables will be the termination rules $R$ for the heuristic. In this algorithm $S$ denotes the current solution and $C(S)$ objective value calculated by the assignment cost function explained in section \ref{sec:ass_cost}.
 
@@ -631,13 +634,15 @@ If $S''$ improves the objective value, it is accepted as the new solution, and t
 To ensure the heuristic provides a warm start to the branch and bound algorithm without consuming excessive computational time as mentioned before, strict termination rules are implemented:
 
 \begin{itemize}
-    \item \textbf{Neighborhood Exhaustion ($k_{max}$):} The inner loop terminates if $k$ exceeds the maximum defined intensity $k_{max}$. This indicates that the current solution $S$ cannot be improved even after applying the strongest defined perturbation.
+    \item \textbf{Relocation Intensity ($k_{max}$):} The inner loop terminates if $k$ exceeds the maximum defined intensity $k_{max}$. This indicates that the current solution $S$ cannot be improved even after applying the strongest defined perturbation.
     \item \textbf{Maximum Iterations:} The outer loop terminates when the global counter reaches \texttt{max\_iterations}. This acts as a hard limit on the runtime, ensuring the solver transitions to the exact method regardless of whether local improvements are still possible.
 \end{itemize}
 
 \section{Computational Analysis}
 \label{sec:comp-analysis}
 \subsection{Computational Process}
+The experiments are run on an AMD Ryzen 5 4500U CPU processor with integrated graphics processing unit. 
+
 The finalized structure of the optimization model is presented in the Algorithm \ref{alg:solving_process}. The model for the problem instance generated is built through the \texttt{gvrp\_model\_gurobi} function that uses the gurobiPy library. The model, upper and lower bounds and all the variables are extracted. Then the \texttt{read\_data\_gvrp} function is called on its own to extract the problem's parameters that are needed for the heuristics and the cost\_matrix dictionary is created through the cost\_param and arc\_list. 
 
 \begin{algorithm}
@@ -690,10 +695,15 @@ The proposed algorithm will be compared with the simple branch and bound without
 \section{Results}
 The results are presented in the below figures as well as in the table ref in more detail.
 \subsection{Time Comparison}
-The time graph in Fig. \ref{fig:time_comp} of the custom branch and bound identifies a lack of correlation between the order of the problem and the solving time. It indicates that the order of the problem is not entirely correlated to the solving time but instead the problem's difficulty is what drives the solving time over a number of problems. The same goes for the simple branch and bound although it is observed that the time is almost half the time of branch and cut outlining a major performance outcome for the implementation of cuts. It will be explained more on the Nodes Explored section as that performance metric is removes the instability of the computer's processing time due to other processes. The objective value of each problem that the branch and cut-bound algorithms and Gurobi find are the same respectively.
+The time graph in Fig. \ref{fig:time_comp} of the custom branch and bound identifies a lack of correlation between the order of the problem and the solving time. It indicates that the order of the problem is not entirely correlated to the problem's difficulty and by extent the solving time increase. The factors defining the problem's difficulty are more a complex polynomial relation that can be researched in future work. 
+
+The same goes for the simple branch and bound although it is observed that the time is almost half the time of branch and cut outlining a major performance outcome for the implementation of cuts. It will be explained in more detail in Section \ref{sub:nodes_expl} as the nodes explored performance metric removes the instability of the computer's processing time due to other processes running. The objective value of each problem that the branch and cut-bound algorithms and Gurobi find are the same respectively.
 
 \subsection{Nodes Explored}
-The nodes explored was a driving performance metric to determine the performance of the custom branch and bound. Here the branch and bound algorithm with the the cut method implemented shows its strength. As we can see the nodes explored of the branch and cut algorithm are 50\% less than the nodes the branch and bound explored without implementing any cuts, but only for the first 3 problems. In the last two problems, the simple branch and bound explored more than twice the nodes of the branch and cut. This shows that the strength of the cut is not linear, but polynomial.
+\label{sub:nodes_expl}
+The nodes explored was a driving performance metric to determine the performance of the custom branch and bound. Here the branch and bound algorithm with the the cut method implemented shows its strength. As we can see the nodes explored of the branch and cut algorithm are approx. 50\% less than the nodes the branch and bound explored without implementing any cuts, but only for the first 3 problems. In the last two problems, the simple branch and bound explored more than twice the nodes of the branch and cut. This shows that the strength of the cut is not linear, but polynomial. 
+
+The early tree pruning can remove a number of nodes from the solution space explore while the simple branch and bound includes in the solving process. This marks a higher order polynomial relation of the simple branch and bound to the problem's difficulty alike the custom branch and cut which remains in a lower polynomial order.
 
 \begin{figure}[h]
     \centering
