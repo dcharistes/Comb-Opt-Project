@@ -15,6 +15,9 @@
 \usepackage{algorithm}
 \usepackage{algorithmic}
 \usepackage{booktabs}
+\usepackage{threeparttable}
+\usepackage{placeins}
+\usepackage{float}
 % \usepackage[greek]{babel}
 % \usepackage[LGR]{fontenc}
 \def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
@@ -39,9 +42,6 @@ ece02031@uowm.gr}
 }
 
 \maketitle
-\thispagestyle{plain}
-\pagestyle{plain}
-
 \begin{abstract}
 The Generalized Vehicle Routing problem investigated in this project is the Single Commodity Formulation \cite{bektas2011}. This is a study on model optimization for this problem proposing a custom Branch and Cut algorithm, as well as heuristics. The final architecture of the custom Branch and Cut algorithm is then compared to the simple Branch and Bound algorithm and the state-of-the-art Gurobi solver for a computational analysis on execution time and nodes traversed in increasing problem order.
 \end{abstract}
@@ -693,7 +693,7 @@ So the branch and bound algorithm will find only infeasible solution as the obje
 The proposed algorithm will be compared with the simple branch and bound without utilizing any heuristics as well as with the state-of-the-art gurobi solver. The problems instances that will be tested will be 5. Sequentially, the grid size and number of customers will be increased starting from 10x10 up to 45x45 and the number of customers and clusters will be linearly transformed based on the grid size. The performance metric will be the solving time and the nodes explored for each problem. 
 
 \section{Results}
-The results are presented in the below figures as well as in the table ref in more detail.
+The results are presented in the below figures as well as in the table \ref{tab:results} in more detail.
 \subsection{Time Comparison}
 The time graph in Fig. \ref{fig:time_comp} of the custom branch and bound identifies a lack of correlation between the order of the problem and the solving time. It indicates that the order of the problem is not entirely correlated to the problem's difficulty and by extent the solving time increase. The factors defining the problem's difficulty are more a complex polynomial relation that can be researched in future work. 
 
@@ -701,11 +701,11 @@ The same goes for the simple branch and bound although it is observed that the t
 
 \subsection{Nodes Explored}
 \label{sub:nodes_expl}
-The nodes explored was a driving performance metric to determine the performance of the custom branch and bound. Here the branch and bound algorithm with the the cut method implemented shows its strength. As we can see the nodes explored of the branch and cut algorithm are approx. 50\% less than the nodes the branch and bound explored without implementing any cuts, but only for the first 3 problems. In the last two problems, the simple branch and bound explored more than twice the nodes of the branch and cut. This shows that the strength of the cut is not linear, but polynomial. 
+The nodes explored (Fig. \ref{fig:nodes_comp}) was a driving performance metric to determine the performance of the custom branch and bound. Here the branch and bound algorithm with the the cut method implemented shows its strength. As we can see the nodes explored of the branch and cut algorithm are approx. 50\% less than the nodes the branch and bound explored without implementing any cuts, but only for the first 3 problems. In the last two problems, the simple branch and bound explored more than twice the nodes of the branch and cut. This shows that the strength of the cut is not linear, but polynomial. 
 
 The early tree pruning can remove a number of nodes from the solution space explore while the simple branch and bound includes in the solving process. This marks a higher order polynomial relation of the simple branch and bound to the problem's difficulty alike the custom branch and cut which remains in a lower polynomial order.
 
-\begin{figure}[h]
+\begin{figure}[H]
     \centering
     \includegraphics[width=1\linewidth]{time_comparison.png}
     \caption{Time Comparison of Gurobi Solver and Custom Branch and Bound. For 5 problems.}
@@ -713,7 +713,7 @@ The early tree pruning can remove a number of nodes from the solution space expl
 \end{figure}
 \label{sec:results}
 
-\begin{figure}[h]
+\begin{figure}[H]
     \centering
     \includegraphics[width=1\linewidth]{nodes_comparison.png}
     \caption{Nodes explored Comparison between Gurobi Solver and Custom Branch and Bound. For 5 problems.}
@@ -721,14 +721,16 @@ The early tree pruning can remove a number of nodes from the solution space expl
 \end{figure}
 \label{sec:results}
 
-\begin{table}[htbp]
+\begin{table}[htbp][H]
     \centering
-    \caption{Results of Solving Methods}
-    \label{tab:results}
-    
-    % Resize to column width (instead of text width)
-    \resizebox{\columnwidth}{!}{%
-        \setlength{\tabcolsep}{3pt} % Reduce padding between columns
+    \begin{threeparttable}
+        \caption{Comparison of Solving Methods}
+        \label{tab:results}
+        
+        % Use \small or \footnotesize to make the table fit nicely
+        \small 
+        \setlength{\tabcolsep}{4pt} % Adjust spacing as needed
+        
         \begin{tabular}{lcccccc}
             \toprule
             \textbf{Pr.} & \multicolumn{3}{c}{\textbf{Time (s)}} & \multicolumn{3}{c}{\textbf{Nodes Expl.}} \\
@@ -741,11 +743,22 @@ The early tree pruning can remove a number of nodes from the solution space expl
             4 & 2067.19 & 3975.36 & 4.09 & 2275 & 4012 & 154 \\
             5 & 787.97 & 1639.58 & 4.21 & 3151 & 8094 & 295 \\
             \bottomrule
-        \end{tabular}%
-    }
+        \end{tabular}
+
+        \begin{tablenotes}
+            \footnotesize
+            \item \textbf{BnC:} Custom Branch \& Cut.
+            \item \textbf{BnB:} Simple Branch \& Bound (no cuts).
+            \item \textbf{Gur:} Gurobi Optimizer..
+        \end{tablenotes}
+        
+    \end{threeparttable}
 \end{table}
 
+\FloatBarrier
+
 \begin{thebibliography}{00}
+\label{references}
 \bibitem{hernandez2025} F. Hernández and W. Palacios, ``Heuristic algorithms for generalized vehicle routing problem (H-GVRP),'' \textit{Applied and Computational Mathematics}, vol. 11, 2025.
 \bibitem{pop2013hybrid} P. C. Pop, O. Matei, and C. P. Sitar, ``An improved hybrid algorithm for solving the generalized vehicle routing problem,'' \textit{Neurocomputing}, vol. 109, pp. 76--83, 2013.
 \bibitem{jie2010} G. Jie, "Model and algorithm of vehicle routing problem with time windows in stochastic traffic network," 2010 International Conference on Logistics Systems and Intelligent Management (ICLSIM), Harbin, China, 2010, pp. 848-851, doi: 10.1109/ICLSIM.2010.5461065.
